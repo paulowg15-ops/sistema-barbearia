@@ -10,14 +10,26 @@ st.title("💈 Sistema de Controle - Barbearia")
 # Nome exato do arquivo com o espaço antes do ponto
 EXCEL_FILE = "Sistema_Controle_Barbearia .xlsx"
 
-# Função para carregar os dados do Excel
+# Função para carregar os dados do Excel de forma segura
 def carregar_dados():
     if os.path.exists(EXCEL_FILE):
         try:
+            xl = pd.ExcelFile(EXCEL_FILE)
+            abas_existentes = xl.sheet_names
+            
+            # Encontrar os nomes das abas ignorando espaços em branco nas pontas
+            aba_servicos = next((x for x in abas_existentes if x.strip() == "Serviços"), None)
+            aba_produtos = next((x for x in abas_existentes if x.strip() == "Produtos"), None)
+            aba_vendas = next((x for x in abas_existentes if x.strip() == "Vendas"), None)
+            
+            if not aba_servicos or not aba_produtos or not aba_vendas:
+                st.error(f"Erro: Não encontramos todas as abas necessárias no Excel. As abas atuais são: {abas_existentes}")
+                return None
+                
             return {
-                "Serviços": pd.read_excel(EXCEL_FILE, sheet_name="Serviços"),
-                "Produtos": pd.read_excel(EXCEL_FILE, sheet_name="Produtos"),
-                "Vendas": pd.read_excel(EXCEL_FILE, sheet_name="Vendas")
+                "Serviços": pd.read_excel(EXCEL_FILE, sheet_name=aba_servicos),
+                "Produtos": pd.read_excel(EXCEL_FILE, sheet_name=aba_produtos),
+                "Vendas": pd.read_excel(EXCEL_FILE, sheet_name=aba_vendas)
             }
         except Exception as e:
             st.error(f"Erro ao ler as abas do Excel: {e}")
@@ -29,7 +41,12 @@ def carregar_dados():
 dados = carregar_dados()
 
 if dados is not None:
-    # Garantir que a coluna Valor Total seja numérica
+    # Garantir que as colunas existam e sejam numéricas
+    colunas_vendas = ["Data e Hora", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento"]
+    for col in colunas_vendas:
+        if col not in dados["Vendas"].columns:
+            dados["Vendas"][col] = None
+            
     dados["Vendas"]["Valor Total"] = pd.to_numeric(dados["Vendas"]["Valor Total"], errors='coerce').fillna(0)
     dados["Vendas"]["Quantidade"] = pd.to_numeric(dados["Vendas"]["Quantidade"], errors='coerce').fillna(0)
 
@@ -82,7 +99,7 @@ if dados is not None:
                 dados["Produtos"].to_excel(writer, sheet_name="Produtos", index=False)
                 dados["Vendas"].to_excel(writer, sheet_name="Vendas", index=False)
                 
-            st.success(f"Sucesso! {item_selecionado} lançado. Atualize a página para ver o painel.")
+            st.success(f"Sucesso! {item_selecionado} lançado. Atualizando sistema...")
             st.rerun()
 
     # ---------------- MÓDULO 2: ESTOQUE & SERVIÇOS ----------------
@@ -99,7 +116,7 @@ if dados is not None:
     elif menu == "📊 Relatórios (Dashboard)":
         st.header("Painel de Resultados Financeiros")
         
-        vendas_df = dados["Vendas"]
+        vendas_df = dados["Vendas"].dropna(subset=["Item"])
         
         if not vendas_df.empty:
             faturamento = vendas_df["Valor Total"].sum()
@@ -114,20 +131,17 @@ if dados is not None:
             st.subheader("Histórico de Vendas Recentes")
             st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True)
         else:
-            st.info("Nenhuma venda registrada ainda. Faturamento: R$ 0,00")
+            st.info("Nenhuma venda cadastrada ou histórico limpo. Faturamento atual: R$ 0,00")
 
     # ---------------- MÓDULO 4: CONFIGURAÇÕES (LIMPEZA) ----------------
     elif menu == "⚙️ Configurações":
         st.header("Configurações do Sistema")
         st.write("Use esta área para gerenciar os dados armazenados na planilha.")
         
-        st.warning("Atenção: A ação abaixo não pode ser desfeita.")
+        st.warning("Atenção: A ação abaixo vai apagar os testes antigos para começar do zero.")
         if st.button("⚠️ Limpar Todas as Vendas de Teste (Zerar Histórico)", type="primary"):
-            # Cria um DataFrame de vendas totalmente vazio, mantendo apenas as colunas estruturais
-            colunas_vendas = ["Data e Hora", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento"]
             dados["Vendas"] = pd.DataFrame(columns=colunas_vendas)
             
-            # Salva a planilha limpa de volta no Excel
             with pd.ExcelWriter(EXCEL_FILE, engine="openpyxl") as writer:
                 dados["Serviços"].to_excel(writer, sheet_name="Serviços", index=False)
                 dados["Produtos"].to_excel(writer, sheet_name="Produtos", index=False)
