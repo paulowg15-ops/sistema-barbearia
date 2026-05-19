@@ -7,84 +7,6 @@ import time
 # Configuração da página da Barbearia com o nome oficial completo
 st.set_page_config(page_title="O Chefão Barbearia e Conveniência", layout="wide", initial_sidebar_state="expanded")
 
-# --- CUSTOMIZAÇÃO COMPLETA DE ESTILO PRETO E AMARELO COM ALTA VISIBILIDADE ---
-st.markdown("""
-    <style>
-        /* Fundo geral do aplicativo (Preto Carbono) */
-        .stApp {
-            background-color: #0E0E10;
-            color: #FFFFFF !important;
-        }
-        
-        /* Títulos Principais em Amarelo Ouro */
-        h1, h2, h3, h4, h5, h6 {
-            color: #FFCC00 !important;
-            font-family: 'Arial Black', sans-serif;
-        }
-        
-        /* Textos comuns, parágrafos e informativos da tela */
-        p, span, .stMarkdown {
-            color: #E4E4E7 !important;
-        }
-        
-        /* Ajuste de labels (nomes em cima dos campos de digitação) */
-        label, p[data-testid="stWidgetLabel"] {
-            color: #FFCC00 !important;
-            font-weight: bold !important;
-            font-size: 15px !important;
-        }
-        
-        /* Customização dos Containers/Bordas com destaque amarelo */
-        div[data-testid="stContainer"] {
-            background-color: #16161A !important;
-            border: 2px solid #FFCC00 !important;
-            border-radius: 10px !important;
-            padding: 20px !important;
-        }
-        
-        /* Correção do texto dentro das Caixas de Seleção e Inputs (Tornando tudo visível) */
-        .stSelectbox div, .stTextInput div, .stNumberInput div, .stDateInput div {
-            color: #FFFFFF !important;
-        }
-        
-        /* Customização dos BOTÕES (Fundo Amarelo Ouro com Texto Preto para contraste perfeito) */
-        button[data-testid="baseButton-secondary"], button[data-testid="baseButton-primary"] {
-            background-color: #FFCC00 !important;
-            color: #000000 !important;
-            font-weight: bold !important;
-            font-size: 16px !important;
-            border: 1px solid #FFCC00 !important;
-            border-radius: 6px !important;
-            transition: 0.3s;
-        }
-        
-        /* Efeito ao passar o mouse por cima do botão */
-        button[data-testid="baseButton-secondary"]:hover, button[data-testid="baseButton-primary"]:hover {
-            background-color: #E6B800 !important;
-            color: #000000 !important;
-            border-color: #E6B800 !important;
-        }
-        
-        /* Customização da Barra Lateral */
-        section[data-testid="stSidebar"] {
-            background-color: #16161A !important;
-            border-right: 3px solid #FFCC00 !important;
-        }
-        
-        /* Ajuste dos textos e botões dentro da barra lateral */
-        section[data-testid="stSidebar"] .stRadio label {
-            color: #FFFFFF !important;
-        }
-        
-        /* Cor das tabelas de dados para não sumirem no escuro */
-        .stDataFrame {
-            background-color: #16161A !important;
-            color: #FFFFFF !important;
-            border-radius: 6px;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
 # Bancos de dados em formato CSV
 ARQUIVO_SERVICOS = "servicos.csv"
 ARQUIVO_PRODUTOS = "produtos.csv"
@@ -147,15 +69,15 @@ if "carrinho_comanda" not in st.session_state:
     st.session_state["carrinho_comanda"] = []
 
 if not st.session_state["autenticado"]:
-    st.markdown("<h1 style='text-align: center;'>💈 O Chefão Barbearia e Conveniência</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>Entre com suas credenciais para gerenciar o sistema</p>", unsafe_allow_html=True)
+    st.title("💈 O Chefão Barbearia e Conveniência")
+    st.write("Entre com suas credenciais para gerenciar o sistema")
     
     col_login, _ = st.columns([1, 2])
     with col_login:
-        with st.container():
+        with st.container(border=True):
             usuario = st.text_input("Usuário:")
             senha = st.text_input("Senha:", type="password")
-            if st.button("🔓 Acessar Sistema", use_container_width=True):
+            if st.button("🔓 Acessar Sistema", type="primary", use_container_width=True):
                 if usuario == "admin" and senha == "barba123":
                     st.session_state["autenticado"] = True
                     st.session_state["perfil"] = "admin"
@@ -168,9 +90,9 @@ if not st.session_state["autenticado"]:
                     st.error("Usuário ou senha incorretos!")
     st.stop()
 
-# --- DESIGN DO MENU LATERAL ---
-st.sidebar.markdown("<h2 style='text-align: center;'>✂️ O Chefão</h2>", unsafe_allow_html=True)
-st.sidebar.markdown(f"Perfil Ativo: **{st.session_state['perfil'].upper()}**")
+# --- MENU LATERAL ---
+st.sidebar.title("✂️ O Chefão")
+st.sidebar.write(f"Perfil Ativo: **{st.session_state['perfil'].upper()}**")
 st.sidebar.markdown("---")
 
 if st.session_state["perfil"] == "admin":
@@ -189,14 +111,14 @@ if st.sidebar.button("🚪 Sair com Segurança", use_container_width=True):
 
 # ---------------- MÓDULO 1: COMANDA ELETRÔNICA ----------------
 if menu == "💸 Abrir Comanda (Vendas)":
-    st.markdown("<h2>📋 Caixa e Comanda Eletrônica - O Chefão</h2>", unsafe_allow_html=True)
-    st.markdown("Adicione os consumos de barbearia e conveniência do cliente.")
+    st.header("📋 Caixa e Comanda Eletrônica - O Chefão")
+    st.write("Adicione os consumos de barbearia e conveniência do cliente.")
     
     col_com1, col_com2 = st.columns([1, 1], gap="large")
     
     with col_com1:
-        with st.container():
-            st.markdown("### ➕ Adicionar Item")
+        with st.container(border=True):
+            st.subheader("➕ Adicionar Item")
             tipo = st.selectbox("Selecione a Categoria:", ["Serviço (Corte/Barba)", "Produto (Bebida/Pomada)"])
             
             if tipo == "Serviço (Corte/Barba)":
@@ -216,7 +138,7 @@ if menu == "💸 Abrir Comanda (Vendas)":
             preco_unitario = tabela_ref[tabela_ref.iloc[:, 1] == item_selecionado][nome_col_preco].values[0]
             subtotal_item = float(preco_unitario) * qtd
             
-            st.markdown(f"**Subtotal do item:** R$ {subtotal_item:.2f}")
+            st.write(f"**Subtotal do item:** R$ {subtotal_item:.2f}")
             if st.button("➕ Inserir na Comanda", use_container_width=True):
                 st.session_state["carrinho_comanda"].append({
                     "Item": item_selecionado, "Tipo": categoria_venda, "Quantidade": qtd, "Valor Total": subtotal_item
@@ -225,8 +147,8 @@ if menu == "💸 Abrir Comanda (Vendas)":
                 st.rerun()
 
     with col_com2:
-        with st.container():
-            st.markdown("### 🛒 Resumo Consumo")
+        with st.container(border=True):
+            st.subheader("🛒 Resumo Consumo")
             if len(st.session_state["carrinho_comanda"]) > 0:
                 df_temp_carrinho = pd.DataFrame(st.session_state["carrinho_comanda"])
                 st.dataframe(df_temp_carrinho, use_container_width=True, hide_index=True)
@@ -235,7 +157,7 @@ if menu == "💸 Abrir Comanda (Vendas)":
                 st.markdown(f"### Total Geral: R$ {valor_total_comanda:.2f}")
                 
                 st.markdown("---")
-                st.markdown("### 🏁 Recebimento")
+                st.subheader("🏁 Recebimento")
                 c_f1, c_f2 = st.columns(2)
                 with c_f1:
                     forma_pagamento = st.selectbox("Forma de Recebimento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
@@ -245,7 +167,7 @@ if menu == "💸 Abrir Comanda (Vendas)":
                     cliente = st.text_input("Identificação do Cliente:", value="Avulso")
                 
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🚀 Finalizar Conta e Registrar", use_container_width=True):
+                if st.button("🚀 Finalizar Conta e Registrar", type="primary", use_container_width=True):
                     data_atual = datetime.now().strftime("%Y-%m-%d")
                     novas_linhas = []
                     for item_c in st.session_state["carrinho_comanda"]:
@@ -270,13 +192,13 @@ if menu == "💸 Abrir Comanda (Vendas)":
 
 # ---------------- MÓDULO 2: CLUBE DE ASSINATURAS ----------------
 elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admin":
-    st.markdown("<h2>💳 Clube de Assinaturas</h2>", unsafe_allow_html=True)
+    st.header("💳 Clube de Assinaturas")
     
     tab_ass1, tab_ass2, tab_ass3 = st.tabs(["👥 Membros Ativos", "🪪 Check-in de Presença", "📊 Frequência do Plano"])
     
     with tab_ass1:
-        with st.container():
-            st.markdown("### ✍️ Matricular Cliente no Clube")
+        with st.container(border=True):
+            st.subheader("### ✍️ Matricular Cliente no Clube")
             col_as1, col_as2, col_as3 = st.columns(3)
             with col_as1:
                 nome_ass = st.text_input("Nome do Assinante:")
@@ -287,7 +209,7 @@ elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admi
             with col_as3:
                 forma_pago_ass = st.selectbox("Canal de Recebimento:", ["Pix", "Dinheiro", "Cartão"])
             
-            if st.button("🔥 Ativar Plano", use_container_width=True):
+            if st.button("🔥 Ativar Plano", type="primary", use_container_width=True):
                 if nome_ass != "":
                     venc_calc = (data_pago + timedelta(days=30)).strftime("%Y-%m-%d")
                     nova_ass = pd.DataFrame([{
@@ -326,15 +248,15 @@ elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admi
             st.info("Nenhum assinante cadastrado.")
 
     with tab_ass2:
-        with st.container():
-            st.markdown("### 🪪 Check-in de Assinante")
+        with st.container(border=True):
+            st.subheader("🪪 Check-in de Assinante")
             if not assinaturas_df.empty:
                 cliente_uso = st.selectbox("Selecione o Cliente:", assinaturas_df["Cliente"].tolist())
                 servico_uso = st.selectbox("Qual o procedimento?", ["Corte de Cabelo", "Fazer a Barba", "Corte + Barba"])
                 lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
                 barbeiro_atendeu = st.selectbox("Barbeiro Atendente:", lista_barbeiros_sistema)
                 
-                if st.button("💾 Validar Entrada", use_container_width=True):
+                if st.button("💾 Validar Entrada", type="primary", use_container_width=True):
                     nova_presenca = pd.DataFrame([{
                         "Data": datetime.now().strftime("%Y-%m-%d"), "Cliente": cliente_uso,
                         "Serviço Usado": servico_uso, "Barbeiro Atendeu": barbeiro_atendeu
@@ -346,7 +268,7 @@ elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admi
                     st.rerun()
 
     with tab_ass3:
-        st.markdown("### 📈 Frequência Mensal do Clube")
+        st.subheader("📈 Frequência Mensal do Clube")
         if not presencas_df.empty:
             contagem_visitas = presencas_df.groupby("Cliente")["Serviço Usado"].count().reset_index()
             contagem_visitas.columns = ["Nome do Cliente Assinante", "Uso no Mês (Vezes)"]
@@ -356,8 +278,8 @@ elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admi
 
 # ---------------- MÓDULO 3: LANÇAR GASTO ----------------
 elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "admin":
-    st.markdown("<h2>📉 Fluxo de Saída / Gastos</h2>", unsafe_allow_html=True)
-    with st.container():
+    st.header("📉 Fluxo de Saída / Gastos")
+    with st.container(border=True):
         col1, col2 = st.columns(2)
         with col1:
             descricao = st.text_input("Descrição do Gasto:")
@@ -365,7 +287,7 @@ elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "adm
         with col2:
             categoria = st.selectbox("Categoria:", ["Infraestrutura (Luz/Água/Aluguel)", "Produtos (Reposição)", "Equipamentos", "Outros"])
             
-        if st.button("💾 Gravar Gasto", use_container_width=True):
+        if st.button("💾 Gravar Gasto", type="primary", use_container_width=True):
             if descricao != "" and valor_gasto > 0:
                 novo_gasto = pd.DataFrame([{
                     "Data": datetime.now().strftime("%Y-%m-%d"), "Descrição": descricao, "Valor (R$)": valor_gasto, "Categoria": categoria
@@ -378,15 +300,15 @@ elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "adm
 
 # ---------------- MÓDULO 4: GERENCIAR BARBEIROS ----------------
 elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin":
-    st.markdown("<h2>👥 Gestão de Barbeiros da Equipe</h2>", unsafe_allow_html=True)
+    st.header("👥 Gestão de Barbeiros da Equipe")
     col_cad1, col_cad2 = st.columns(2, gap="large")
     with col_cad1:
-        with st.container():
-            st.markdown("### ➕ Adicionar Barbeiro")
+        with st.container(border=True):
+            st.subheader("➕ Adicionar Barbeiro")
             novo_nome = st.text_input("Nome:")
             nova_comissao = st.number_input("Comissão nos Serviços (%):", min_value=0.0, max_value=100.0, value=50.0, step=5.0)
             
-            if st.button("Cadastrar Barbeiro", use_container_width=True):
+            if st.button("Cadastrar Barbeiro", type="primary", use_container_width=True):
                 if novo_nome != "" and novo_nome not in barbeiros_df["Nome"].tolist():
                     novo_b = pd.DataFrame([{"Nome": novo_nome, "Comissão (%)": nova_comissao}])
                     barbeiros_df = pd.concat([barbeiros_df, novo_b], ignore_index=True)
@@ -396,8 +318,8 @@ elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin"
                     st.rerun()
                     
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.container():
-            st.markdown("### ❌ Remover Barbeiro")
+        with st.container(border=True):
+            st.subheader("❌ Remover Barbeiro")
             if not barbeiros_df.empty:
                 barbeiro_remover = st.selectbox("Selecione para Remover:", barbeiros_df["Nome"].tolist())
                 if st.button("Remover Permanentemente", use_container_width=True):
@@ -407,12 +329,12 @@ elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin"
                     time.sleep(1.2)
                     st.rerun()
     with col_cad2:
-        st.markdown("### Profissionais Ativos")
+        st.subheader("Profissionais Ativos")
         st.dataframe(barbeiros_df, use_container_width=True, hide_index=True)
 
 # ---------------- MÓDULO 5: ESTOQUE & SERVIÇOS ----------------
 elif menu == "📦 Estoque & Serviços":
-    st.markdown("<h2>📦 Monitor do Estoque Conveniência e Serviços</h2>", unsafe_allow_html=True)
+    st.header("📦 Monitor do Estoque Conveniência e Serviços")
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
     produtos_calculados = produtos_df.copy()
     qtd_vendida_map = vendas_df[vendas_df["Tipo"] == "Produto"].groupby("Item")["Quantidade"].sum().to_dict()
@@ -420,25 +342,25 @@ elif menu == "📦 Estoque & Serviços":
     produtos_calculados["Quantidade Vendida"] = produtos_calculados["Nome do Produto"].map(qtd_vendida_map).fillna(0).astype(int)
     produtos_calculados["Estoque Atual"] = produtos_calculados["Estoque Inicial"] - produtos_calculados["Quantidade Vendida"]
     
-    with st.container():
-        st.markdown("### 📦 Nível de Prateleira (Produtos)")
+    with st.container(border=True):
+        st.subheader("📦 Nível de Prateleira (Produtos)")
         st.dataframe(produtos_calculados, use_container_width=True, hide_index=True)
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.container():
-        st.markdown("### 💈 Catálogo Vigente de Serviços")
+    with st.container(border=True):
+        st.subheader("💈 Catálogo Vigente de Serviços")
         st.dataframe(servicos_df, use_container_width=True, hide_index=True)
 
 # ---------------- MÓDULO 6: GERENCIAR CATÁLOGO ----------------
 elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "admin":
-    st.markdown("<h2>⚙️ Modificação de Catálogo e Preços</h2>", unsafe_allow_html=True)
+    st.header("⚙️ Modificação de Catálogo e Preços")
     aba_serv, aba_prod = st.tabs(["💈 Serviços", "📦 Produtos/Bebidas"])
     
     with aba_serv:
-        with st.container():
-            st.markdown("### Adicionar Novo Serviço")
+        with st.container(border=True):
+            st.subheader("Adicionar Novo Serviço")
             s_nome = st.text_input("Nome do Serviço:")
             s_preco = st.number_input("Preço (R$):", min_value=0.0, value=20.0, step=5.0)
-            if st.button("Criar Serviço"):
+            if st.button("Criar Serviço", type="primary"):
                 if s_nome != "":
                     novo_id = int(servicos_df["ID"].max() + 1) if not servicos_df.empty else 1
                     novo_s = pd.DataFrame([{"ID": novo_id, "Nome do Serviço": s_nome, "Preço (R$)": s_preco}])
@@ -449,20 +371,20 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
                     st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.container():
-            st.markdown("### Mudar Preço Existente")
+        with st.container(border=True):
+            st.subheader("Mudar Preço Existente")
             servico_editar = st.selectbox("Escolha o Serviço:", servicos_df["Nome do Serviço"].tolist())
             novo_preco_s = st.number_input("Modificar Valor para (R$):", min_value=0.0, value=float(servicos_df[servicos_df["Nome do Serviço"] == servico_editar]["Preço (R$)"].values[0]))
-            if st.button("Atualizar Valor", use_container_width=True):
+            if st.button("Atualizar Valor", type="primary"):
                 servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
                 servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-                st.success("🎉 Preço updated!")
+                st.success("🎉 Preço atualizado!")
                 time.sleep(1.2)
                 st.rerun()
 
     with aba_prod:
-        with st.container():
-            st.markdown("### Cadastrar Novo Produto")
+        with st.container(border=True):
+            st.subheader("Cadastrar Novo Produto")
             col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns(5)
             with col_p1: p_nome = st.text_input("Nome do Produto:")
             with col_p2: p_venda = st.number_input("Preço Venda:", min_value=0.0, value=10.0)
@@ -470,7 +392,7 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
             with col_p4: p_estoque = st.number_input("Estoque Inicial:", min_value=0, value=10)
             with col_p5: p_comis = st.number_input("Comissão Barbeiro (R$):", min_value=0.0, value=0.0)
                 
-            if st.button("Salvar Produto", use_container_width=True):
+            if st.button("Salvar Produto", type="primary", use_container_width=True):
                 if p_nome != "":
                     novo_id = int(produtos_df["ID"].max() + 1) if not produtos_df.empty else 1
                     novo_p = pd.DataFrame([{"ID": novo_id, "Nome do Produto": p_nome, "Preço de Venda": p_venda, "Preço de Custo": p_custo, "Estoque Inicial": p_estoque, "Comissão Barbeiro (R$)": p_comis}])
@@ -481,8 +403,8 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
                     st.rerun()
                     
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.container():
-            st.markdown("### Editar Produto / Reposição de Estoque")
+        with st.container(border=True):
+            st.subheader("Editar Produto / Reposição de Estoque")
             prod_editar = st.selectbox("Selecione o Produto:", produtos_df["Nome do Produto"].tolist())
             col_ed1, col_ed2, col_ed3, col_ed4 = st.columns(4)
             item_linha = produtos_df[produtos_df["Nome do Produto"] == prod_editar]
@@ -491,7 +413,7 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
             with col_ed3: ed_estoque = st.number_input("Ajustar Estoque Inicial:", value=int(item_linha["Estoque Inicial"].values[0]))
             with col_ed4: ed_comis = st.number_input("Ajustar Comissão Fixa (R$):", value=float(item_linha["Comissão Barbeiro (R$)"].values[0]))
                 
-            if st.button("Salvar Modificações", use_container_width=True):
+            if st.button("Salvar Modificações", type="primary", use_container_width=True):
                 produtos_df.loc[produtos_df["Nome do Produto"] == prod_editar, ["Preço de Venda", "Preço de Custo", "Estoque Inicial", "Comissão Barbeiro (R$)"]] = [ed_venda, ed_custo, ed_estoque, ed_comis]
                 produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
                 st.success("🔥 Informações atualizadas!")
@@ -500,7 +422,7 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
 
 # ---------------- MÓDULO 7: PAINEL DE RELATÓRIOS ----------------
 elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "admin":
-    st.markdown("<h2>📊 Dashboard Financeiro - O Chefão</h2>", unsafe_allow_html=True)
+    st.header("📊 Dashboard Financeiro - O Chefão")
     
     vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
@@ -512,21 +434,15 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
     
     c1, c2, c3 = st.columns(3)
     with c1:
-        with st.container():
-            st.markdown("<p style='color: #A1A1AA; font-size: 14px; margin:0;'>💰 FATURAMENTO BRUTO</p>", unsafe_allow_html=True)
-            st.markdown(f"<h2 style='color: #10B981; margin:0;'>R$ {faturamento:.2f}</h2>", unsafe_allow_html=True)
+        st.metric("💰 FATURAMENTO BRUTO", f"R$ {faturamento:.2f}")
     with c2:
-        with st.container():
-            st.markdown("<p style='color: #A1A1AA; font-size: 14px; margin:0;'>📉 TOTAL DE GASTOS</p>", unsafe_allow_html=True)
-            st.markdown(f"<h2 style='color: #EF4444; margin:0;'>R$ {total_gastos:.2f}</h2>", unsafe_allow_html=True)
+        st.metric("📉 TOTAL DE GASTOS", f"R$ {total_gastos:.2f}")
     with c3:
-        with st.container():
-            st.markdown("<p style='color: #A1A1AA; font-size: 14px; margin:0;'>🔥 LUCRO LÍQUIDO REAL</p>", unsafe_allow_html=True)
-            st.markdown(f"<h2 style='color: #FFCC00; margin:0;'>R$ {lucro_liquido:.2f}</h2>", unsafe_allow_html=True)
+        st.metric("🔥 LUCRO LÍQUIDO REAL", f"R$ {lucro_liquido:.2f}")
             
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.container():
-        st.markdown("### 💸 Tabela Unificada de Comissões Semanal")
+    with st.container(border=True):
+        st.subheader("💸 Tabela Unificada de Comissões Semanal")
         if not barbeiros_df.empty:
             relatorio_comissao = []
             mapa_comissao_produto = produtos_df.set_index("Nome do Produto")["Comissão Barbeiro (R$)"].to_dict()
@@ -568,10 +484,10 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
     st.markdown("<br>", unsafe_allow_html=True)
     col_g1, col_g2 = st.columns(2, gap="large")
     with col_g1:
-        st.markdown("### 📅 Faturamento Diário")
+        st.subheader("📅 Faturamento Diário")
         if not vendas_df.empty: st.line_chart(vendas_df.groupby("Data")["Valor Total"].sum())
     with col_g2:
-        st.markdown("### 💰 Divisão Balcão (Serviços vs Produtos)")
+        st.subheader("💰 Divisão Balcão (Serviços vs Produtos)")
         if not vendas_df.empty: st.bar_chart(vendas_df.groupby("Tipo")["Valor Total"].sum())
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -582,9 +498,9 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
 # ---------------- MÓDULO 8: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações" and st.session_state["perfil"] == "admin":
     st.header("Configurações Globais")
-    with st.container():
+    with st.container(border=True):
         st.warning("Ação destrutiva. Limpa todas as vendas do banco de dados definitivamente.")
-        if st.button("🚨 Limpar Todas as Vendas e Zerar Caixa", use_container_width=True):
+        if st.button("🚨 Limpar Todas as Vendas e Zerar Caixa", type="primary", use_container_width=True):
             pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"]).to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
             st.success("Sistema redefinido!")
             st.rerun()
