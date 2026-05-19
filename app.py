@@ -53,7 +53,7 @@ vendas_df = pd.read_csv(ARQUIVO_VENDAS, encoding='utf-8')
 gastos_df = pd.read_csv(ARQUIVO_GASTOS, encoding='utf-8')
 barbeiros_df = pd.read_csv(ARQUIVO_BARBEIROS, encoding='utf-8')
 
-# --- SESSÃO DE LOGIN DE SEGURANÇA (PERSISTENTE POR SESSÃO) ---
+# --- SESSÃO DE LOGIN DE SEGURANÇA ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 if "perfil" not in st.session_state:
@@ -120,10 +120,8 @@ if menu == "💸 Lançar Venda":
         
     with col2:
         forma_pagamento = st.selectbox("Forma de Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
-        
         lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
         barbeiro_venda = st.selectbox("Barbeiro Profissional:", lista_barbeiros_sistema)
-        
         cliente = st.text_input("Nome do Cliente (Opcional):", value="Avulso")
     
     preco_unitario = tabela_ref[tabela_ref.iloc[:, 1] == item_selecionado][nome_col_preco].values[0]
@@ -144,8 +142,21 @@ if menu == "💸 Lançar Venda":
         }])
         vendas_df = pd.concat([vendas_df, nova_venda], ignore_index=True)
         vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
-        st.success(f"Venda registrada com sucesso!")
+        
+        # Guardar dados na sessão para exibir o alerta permanente de confirmação
+        st.session_state["ultimo_lancamento"] = {
+            "item": item_selecionado,
+            "qtd": qtd,
+            "valor": valor_total
+        }
         st.rerun()
+
+    # Exibe uma mensagem de confirmação fixa e destacada caso exista um lançamento recente
+    if "ultimo_lancamento" in st.session_state:
+        lançamento = st.session_state["ultimo_lancamento"]
+        st.success(f"✅ **LANÇAMENTO CONFIRMADO COM SUCESSO!** \n\n **Item:** {lançamento['item']} | **Qtd:** {lançamento['qtd']} | **Total:** R$ {lançamento['valor']:.2f}")
+        # Limpa o estado para que suma caso mude de aba
+        del st.session_state["ultimo_lancamento"]
 
 # ---------------- MÓDULO 2: LANÇAR GASTO ----------------
 elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "admin":
@@ -169,7 +180,6 @@ elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "adm
             gastos_df = pd.concat([gastos_df, novo_gasto], ignore_index=True)
             gastos_df.to_csv(ARQUIVO_GASTOS, index=False, encoding='utf-8')
             st.success("Gasto registrado com sucesso!")
-            st.rerun()
 
 # ---------------- MÓDULO 3: CADASTRAR BARBEIRO ----------------
 elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin":
@@ -229,19 +239,14 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
     
     st.markdown("---")
     
-    # TABELA DE COMISSÕES SEMANAIS POR BARBEIRO
     st.subheader("💸 Relatório de Comissões por Barbeiro (Apenas Serviços)")
-    
     if not vendas_df.empty and not barbeiros_df.empty:
         servicos_realizados = vendas_df[vendas_df["Tipo"] == "Serviço"]
-        
         relatorio_comissao = []
         for _, b in barbeiros_df.iterrows():
             nome_b = b["Nome"]
             porcentagem_b = b["Comissão (%)"]
-            
             vendas_do_barbeiro = servicos_realizados[servicos_realizados["Barbeiro"] == nome_b]
-            
             total_arrecadado = vendas_do_barbeiro["Valor Total"].sum()
             total_cortes = vendas_do_barbeiro["Quantidade"].sum()
             valor_comissao = total_arrecadado * (porcentagem_b / 100.0)
@@ -253,37 +258,13 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
                 "Sua Comissão (%)": f"{porcentagem_b}%",
                 "Valor a Pagar (R$)": valor_comissao
             })
-            
         st.dataframe(pd.DataFrame(relatorio_comissao), use_container_width=True)
     else:
         st.info("Nenhum serviço registrado para calcular comissões.")
         
     st.markdown("---")
-    
     col_g1, col_g2 = st.columns(2)
     with col_g1:
         st.subheader("📅 Faturamento Diário")
         if not vendas_df.empty:
-            st.line_chart(vendas_df.groupby("Data")["Valor Total"].sum())
-            
-    with col_g2:
-        st.subheader("💰 Divisão de Receitas")
-        if not vendas_df.empty:
-            st.bar_chart(vendas_df.groupby("Tipo")["Valor Total"].sum())
-
-    st.markdown("---")
-    tab1, tab2 = st.tabs(["📋 Histórico de Vendas", "📉 Histórico de Gastos"])
-    with tab1:
-        st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True)
-    with tab2:
-        st.dataframe(gastos_df.sort_index(ascending=False), use_container_width=True)
-
-# ---------------- MÓDULO 6: CONFIGURAÇÕES ----------------
-elif menu == "⚙️ Configurações" and st.session_state["perfil"] == "admin":
-    st.header("Configurações Globais")
-    st.warning("Ações de Limpeza de Dados (Não podem ser desfeitas!)")
-    
-    if st.button("⚠️ Limpar Histórico de Vendas", type="primary"):
-        pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"]).to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
-        st.success("Histórico zerado!")
-        st.rerun()
+            st.line_chart(vendas_df.groupby("Data")
