@@ -53,7 +53,7 @@ vendas_df = pd.read_csv(ARQUIVO_VENDAS, encoding='utf-8')
 gastos_df = pd.read_csv(ARQUIVO_GASTOS, encoding='utf-8')
 barbeiros_df = pd.read_csv(ARQUIVO_BARBEIROS, encoding='utf-8')
 
-# --- SESSÃO DE LOGIN DE SEGURANÇA (PERSISTENTE POR SESSÃO) ---
+# --- SESSÃO DE LOGIN DE SEGURANÇA ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 if "perfil" not in st.session_state:
@@ -83,7 +83,7 @@ if not st.session_state["autenticado"]:
 
 # --- CONTROLE DE MENUS POR PERFIL ---
 if st.session_state["perfil"] == "admin":
-    opcoes_menu = ["💸 Lançar Venda", "📉 Lançar Gasto/Despesa", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "📊 Painel de Relatórios", "⚙️ Configurações"]
+    opcoes_menu = ["💸 Lançar Venda", "📉 Lançar Gasto/Despesa", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "📊 Painel de Relatórios", "⚙️ Configurações"]
 else:
     opcoes_menu = ["💸 Lançar Venda", "📦 Estoque & Serviços"]
 
@@ -194,7 +194,7 @@ elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin"
         st.subheader("Profissionais Ativos")
         st.dataframe(barbeiros_df, use_container_width=True)
 
-# ---------------- MÓDULO 4: ESTOQUE ----------------
+# ---------------- MÓDULO 4: ESTOQUE & SERVIÇOS (VISUALIZAÇÃO) ----------------
 elif menu == "📦 Estoque & Serviços":
     st.header("Controle de Estoque e Catálogo")
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
@@ -210,7 +210,81 @@ elif menu == "📦 Estoque & Serviços":
     st.subheader("💈 Lista de Serviços Prestados")
     st.dataframe(servicos_df, use_container_width=True)
 
-# ---------------- MÓDULO 5: PAINEL DE RELATÓRIOS ----------------
+# ---------------- MÓDULO 5: GERENCIAR CATÁLOGO (NOVO) ----------------
+elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "admin":
+    st.header("⚙️ Gerenciar e Configurar Catálogo (Serviços e Produtos)")
+    
+    aba_serv, aba_prod = st.tabs(["💈 Serviços", "📦 Produtos"])
+    
+    with aba_serv:
+        st.subheader("Adicionar Novo Serviço")
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            s_nome = st.text_input("Nome do Novo Serviço (Ex: Sobrancelha):")
+        with col_s2:
+            s_preco = st.number_input("Preço Cobrado (R$):", min_value=0.0, value=20.0, step=5.0)
+            
+        if st.button("Adicionar Serviço"):
+            if s_nome != "":
+                novo_id = int(servicos_df["ID"].max() + 1) if not servicos_df.empty else 1
+                novo_s = pd.DataFrame([{"ID": novo_id, "Nome do Serviço": s_nome, "Preço (R$)": s_preco}])
+                servicos_df = pd.concat([servicos_df, novo_s], ignore_index=True)
+                servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
+                st.success(f"Serviço '{s_nome}' incluído!")
+                st.rerun()
+                
+        st.markdown("---")
+        st.subheader("Editar Preços Existentes")
+        servico_editar = st.selectbox("Escolha o Serviço para Editar:", servicos_df["Nome do Serviço"].tolist())
+        novo_preco_s = st.number_input("Novo Preço (R$):", min_value=0.0, value=float(servicos_df[servicos_df["Nome do Serviço"] == servico_editar]["Preço (R$)"].values[0]))
+        
+        if st.button("Salvar Novo Preço"):
+            servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
+            servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
+            st.success("Preço atualizado com sucesso!")
+            st.rerun()
+
+    with aba_prod:
+        st.subheader("Adicionar Novo Produto / Bebida")
+        col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+        with col_p1:
+            p_nome = st.text_input("Nome do Produto:")
+        with col_p2:
+            p_venda = st.number_input("Preço de Venda (R$):", min_value=0.0, value=10.0)
+        with col_p3:
+            p_custo = st.number_input("Preço de Custo (R$):", min_value=0.0, value=5.0)
+        with col_p4:
+            p_estoque = st.number_input("Estoque Inicial:", min_value=0, value=10, step=1)
+            
+        if st.button("Adicionar Produto"):
+            if p_nome != "":
+                novo_id = int(produtos_df["ID"].max() + 1) if not produtos_df.empty else 1
+                novo_p = pd.DataFrame([{"ID": novo_id, "Nome do Produto": p_nome, "Preço de Venda": p_venda, "Preço de Custo": p_custo, "Estoque Inicial": p_estoque}])
+                produtos_df = pd.concat([produtos_df, novo_p], ignore_index=True)
+                produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
+                st.success(f"Produto '{p_nome}' incluído no estoque!")
+                st.rerun()
+                
+        st.markdown("---")
+        st.subheader("Editar Estoque / Preço de Produto Existente")
+        prod_editar = st.selectbox("Escolha o Produto para Modificar:", produtos_df["Nome do Produto"].tolist())
+        
+        col_ed1, col_ed2, col_ed3 = st.columns(3)
+        item_linha = produtos_df[produtos_df["Nome do Produto"] == prod_editar]
+        with col_ed1:
+            ed_venda = st.number_input("Mudar Preço Venda:", value=float(item_linha["Preço de Venda"].values[0]))
+        with col_ed2:
+            ed_custo = st.number_input("Mudar Preço Custo:", value=float(item_linha["Preço de Custo"].values[0]))
+        with col_ed3:
+            ed_estoque = st.number_input("Mudar Estoque Inicial Total:", value=int(item_linha["Estoque Inicial"].values[0]))
+            
+        if st.button("Salvar Modificações do Produto"):
+            produtos_df.loc[produtos_df["Nome do Produto"] == prod_editar, ["Preço de Venda", "Preço de Custo", "Estoque Inicial"]] = [ed_venda, ed_custo, ed_estoque]
+            produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
+            st.success("Produto atualizado com sucesso!")
+            st.rerun()
+
+# ---------------- MÓDULO 6: PAINEL DE RELATÓRIOS ----------------
 elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "admin":
     st.header("Painel Estatístico, Financeiro e Comissões")
     
@@ -228,20 +302,15 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
     col3.metric("Lucro Líquido Real", f"R$ {lucro_liquido:.2f}")
     
     st.markdown("---")
-    
-    # TABELA DE COMISSÕES SEMANAIS POR BARBEIRO
     st.subheader("💸 Relatório de Comissões por Barbeiro (Apenas Serviços)")
     
     if not vendas_df.empty and not barbeiros_df.empty:
         servicos_realizados = vendas_df[vendas_df["Tipo"] == "Serviço"]
-        
         relatorio_comissao = []
         for _, b in barbeiros_df.iterrows():
             nome_b = b["Nome"]
             porcentagem_b = b["Comissão (%)"]
-            
             vendas_do_barbeiro = servicos_realizados[servicos_realizados["Barbeiro"] == nome_b]
-            
             total_arrecadado = vendas_do_barbeiro["Valor Total"].sum()
             total_cortes = vendas_do_barbeiro["Quantidade"].sum()
             valor_comissao = total_arrecadado * (porcentagem_b / 100.0)
@@ -253,19 +322,16 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
                 "Sua Comissão (%)": f"{porcentagem_b}%",
                 "Valor a Pagar (R$)": valor_comissao
             })
-            
         st.dataframe(pd.DataFrame(relatorio_comissao), use_container_width=True)
     else:
         st.info("Nenhum serviço registrado para calcular comissões.")
         
     st.markdown("---")
-    
     col_g1, col_g2 = st.columns(2)
     with col_g1:
         st.subheader("📅 Faturamento Diário")
         if not vendas_df.empty:
             st.line_chart(vendas_df.groupby("Data")["Valor Total"].sum())
-            
     with col_g2:
         st.subheader("💰 Divisão de Receitas")
         if not vendas_df.empty:
@@ -278,7 +344,7 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
     with tab2:
         st.dataframe(gastos_df.sort_index(ascending=False), use_container_width=True)
 
-# ---------------- MÓDULO 6: CONFIGURAÇÕES ----------------
+# ---------------- MÓDULO 7: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações" and st.session_state["perfil"] == "admin":
     st.header("Configurações Globais")
     st.warning("Ações de Limpeza de Dados (Não podem ser desfeitas!)")
