@@ -7,26 +7,34 @@ import os
 st.set_page_config(page_title="Barbearia - Controle de Estoque e Vendas", layout="wide")
 st.title("💈 Sistema de Controle - Barbearia")
 
-# Arquivo do Excel que serve como nosso banco de dados
-EXCEL_FILE = "Sistema_Controle_Barbearia.xlsx"
+# Nome exato do arquivo com o espaço antes do ponto
+EXCEL_FILE = "Sistema_Controle_Barbearia .xlsx"
 
 # Função para carregar os dados do Excel
 def carregar_dados():
     if os.path.exists(EXCEL_FILE):
-        return {
-            "Serviços": pd.read_excel(EXCEL_FILE, sheet_name="Serviços"),
-            "Produtos": pd.read_excel(EXCEL_FILE, sheet_name="Produtos"),
-            "Vendas": pd.read_excel(EXCEL_FILE, sheet_name="Vendas")
-        }
+        try:
+            return {
+                "Serviços": pd.read_excel(EXCEL_FILE, sheet_name="Serviços"),
+                "Produtos": pd.read_excel(EXCEL_FILE, sheet_name="Produtos"),
+                "Vendas": pd.read_excel(EXCEL_FILE, sheet_name="Vendas")
+            }
+        except Exception as e:
+            st.error(f"Erro ao ler as abas do Excel: {e}")
+            return None
     else:
-        st.error("Arquivo Excel não encontrado! Certifique-se de que o arquivo está na mesma pasta.")
+        st.error(f"Arquivo Excel '{EXCEL_FILE}' não encontrado no GitHub!")
         return None
 
 dados = carregar_dados()
 
 if dados is not None:
+    # Garantir que a coluna Valor Total seja numérica
+    dados["Vendas"]["Valor Total"] = pd.to_numeric(dados["Vendas"]["Valor Total"], errors='coerce').fillna(0)
+    dados["Vendas"]["Quantidade"] = pd.to_numeric(dados["Vendas"]["Quantidade"], errors='coerce').fillna(0)
+
     # Menu Lateral do Sistema
-    menu = st.sidebar.radio("Navegação", ["💸 Lançar Venda", "📦 Estoque & Serviços", "📊 Relatórios (Dashboard)"])
+    menu = st.sidebar.radio("Navegação", ["💸 Lançar Venda", "📦 Estoque & Serviços", "📊 Relatórios (Dashboard)", "⚙️ Configurações"])
 
     # ---------------- MÓDULO 1: LANÇAR VENDA ----------------
     if menu == "💸 Lançar Venda":
@@ -51,12 +59,11 @@ if dados is not None:
         
         # Buscar o preço unitário
         preco_unitario = tabela_ref[tabela_ref.iloc[:, 1] == item_selecionado][nome_col_preco].values[0]
-        valor_total = preco_unitario * qtd
+        valor_total = float(preco_unitario) * qtd
         
         st.write(f"### Valor Total: R$ {valor_total:.2f}")
         
         if st.button("Confirmar Lançamento", type="primary"):
-            # Criar nova linha de venda
             nova_venda = pd.DataFrame([{
                 "Data e Hora": datetime.now().strftime("%d/%m/%Y %H:%M"),
                 "Item": item_selecionado,
@@ -66,23 +73,17 @@ if dados is not None:
                 "Forma de Pagamento": forma_pagamento
             }])
             
-            # Atualizar aba de vendas
+            # Adicionar nova venda
             dados["Vendas"] = pd.concat([dados["Vendas"], nova_venda], ignore_index=True)
             
-            # Atualizar o estoque na aba de Produtos se for um Produto
-            if categoria_venda == "Produto":
-                idx_prod = dados["Produtos"][dados["Produtos"]["Nome do Produto"] == item_selecionado].index
-                # Se não usar fórmulas do Excel pura, podemos atualizar o valor estático aqui para garantir
-                # Mas salvando de volta no Excel, as fórmulas SUMIF que deixei cuidam disso!
-                pass
-            
-            # Salvar de volta no Excel mantendo as outras abas
+            # Salvar no Excel
             with pd.ExcelWriter(EXCEL_FILE, engine="openpyxl") as writer:
                 dados["Serviços"].to_excel(writer, sheet_name="Serviços", index=False)
                 dados["Produtos"].to_excel(writer, sheet_name="Produtos", index=False)
                 dados["Vendas"].to_excel(writer, sheet_name="Vendas", index=False)
                 
-            st.success(f"Sucesso! {item_selecionado} lançado.")
+            st.success(f"Sucesso! {item_selecionado} lançado. Atualize a página para ver o painel.")
+            st.rerun()
 
     # ---------------- MÓDULO 2: ESTOQUE & SERVIÇOS ----------------
     elif menu == "📦 Estoque & Serviços":
@@ -105,7 +106,6 @@ if dados is not None:
             total_cortes = vendas_df[vendas_df["Tipo"] == "Serviço"]["Quantidade"].sum()
             total_produtos = vendas_df[vendas_df["Tipo"] == "Produto"]["Quantidade"].sum()
             
-            # Mostrar indicadores em blocos bonitos
             col1, col2, col3 = st.columns(3)
             col1.metric("Faturamento Total", f"R$ {faturamento:.2f}")
             col2.metric("Cortes Realizados", int(total_cortes))
@@ -114,4 +114,24 @@ if dados is not None:
             st.subheader("Histórico de Vendas Recentes")
             st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True)
         else:
-            st.info("Nenhuma venda registrada ainda.")
+            st.info("Nenhuma venda registrada ainda. Faturamento: R$ 0,00")
+
+    # ---------------- MÓDULO 4: CONFIGURAÇÕES (LIMPEZA) ----------------
+    elif menu == "⚙️ Configurações":
+        st.header("Configurações do Sistema")
+        st.write("Use esta área para gerenciar os dados armazenados na planilha.")
+        
+        st.warning("Atenção: A ação abaixo não pode ser desfeita.")
+        if st.button("⚠️ Limpar Todas as Vendas de Teste (Zerar Histórico)", type="primary"):
+            # Cria um DataFrame de vendas totalmente vazio, mantendo apenas as colunas estruturais
+            colunas_vendas = ["Data e Hora", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento"]
+            dados["Vendas"] = pd.DataFrame(columns=colunas_vendas)
+            
+            # Salva a planilha limpa de volta no Excel
+            with pd.ExcelWriter(EXCEL_FILE, engine="openpyxl") as writer:
+                dados["Serviços"].to_excel(writer, sheet_name="Serviços", index=False)
+                dados["Produtos"].to_excel(writer, sheet_name="Produtos", index=False)
+                dados["Vendas"].to_excel(writer, sheet_name="Vendas", index=False)
+                
+            st.success("Histórico limpo com sucesso! O seu faturamento foi zerado.")
+            st.rerun()
