@@ -96,7 +96,7 @@ st.sidebar.write(f"Perfil Ativo: **{st.session_state['perfil'].upper()}**")
 st.sidebar.markdown("---")
 
 if st.session_state["perfil"] == "admin":
-    opcoes_menu = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "📊 Painel de Relatórios", "⚙️ Configurações"]
+    opcoes_menu = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "📊 Painel de Relatórios", "⚙️ Configurações"]
 else:
     opcoes_menu = ["💸 Abrir Comanda (Vendas)", "📦 Estoque & Serviços"]
 
@@ -190,7 +190,7 @@ if menu == "💸 Abrir Comanda (Vendas)":
             else:
                 st.info("A comanda eletrônica está limpa e vazia.")
 
-# ---------------- MÓDULO 2: CLUBE DE ASSINATURAS (COM EXCLUSÃO DE ASSINANTE) ----------------
+# ---------------- MÓDULO 2: CLUBE DE ASSINATURAS ----------------
 elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admin":
     st.header("💳 Clube de Assinaturas")
     
@@ -245,7 +245,6 @@ elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admi
                 else:
                     st.info(f"🟢 **{r['Cliente']}** | Vencimento: {r['Data Vencimento']} (Regular: {dias_restantes} dias)")
             
-            # ÁREA NOVA: REMOVER APENAS UM ASSINANTE ESPECÍFICO
             st.markdown("---")
             st.subheader("❌ Cancelar / Remover Assinante Específico")
             assinante_remover = st.selectbox("Selecione o Cliente para Cancelar Plano:", assinaturas_df["Cliente"].tolist())
@@ -309,7 +308,64 @@ elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "adm
                 time.sleep(1.2)
                 st.rerun()
 
-# ---------------- MÓDULO 4: GERENCIAR BARBEIROS ----------------
+# ---------------- MÓDULO 4: TELA DE ALTERAR OU APAGAR LANÇAMENTO (NOVA) ----------------
+elif menu == "✏️ Corrigir Lançamentos" and st.session_state["perfil"] == "admin":
+    st.header("✏️ Central de Correções e Estornos de Caixa")
+    st.write("Selecione um lançamento feito incorretamente para alterar ou remover de forma definitiva.")
+    
+    if not vendas_df.empty:
+        # Cria uma cópia temporária com a coluna ID visível para o usuário escolher
+        vendas_visivel_df = vendas_df.copy()
+        vendas_visivel_df.insert(0, "ID_Lancamento", vendas_visivel_df.index)
+        
+        st.subheader("📋 Histórico Recente de Lançamentos")
+        st.dataframe(vendas_visivel_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
+        
+        st.markdown("---")
+        
+        col_ed1, col_ed2 = st.columns(2, gap="large")
+        
+        with col_ed1:
+            with st.container(border=True):
+                st.subheader("✏️ Editar Lançamento")
+                id_selecionado = st.selectbox("Selecione o Número (ID) do lançamento que quer ajustar:", vendas_visivel_df["ID_Lancamento"].tolist())
+                
+                linha_original = vendas_df.iloc[id_selecionado]
+                st.info(f"Item Original: **{linha_original['Item']}** | Valor Total: R$ {linha_original['Valor Total']:.2f}")
+                
+                lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
+                novo_b = st.selectbox("Mudar Barbeiro para:", lista_barbeiros_sistema, index=lista_barbeiros_sistema.index(linha_original['Barbeiro']) if linha_original['Barbeiro'] in lista_barbeiros_sistema else 0)
+                nova_f_pagto = st.selectbox("Mudar Forma de Pagamento para:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"], index=["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"].index(linha_original['Forma de Pagamento']))
+                novo_cliente_nome = st.text_input("Corrigir Nome do Cliente:", value=linha_original['Cliente'])
+                
+                if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
+                    vendas_df.at[id_selecionado, 'Barbeiro'] = novo_b
+                    vendas_df.at[id_selecionado, 'Forma de Pagamento'] = nova_f_pagto
+                    vendas_df.at[id_selecionado, 'Cliente'] = novo_cliente_nome
+                    vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
+                    st.success("✅ Informações alteradas com sucesso!")
+                    time.sleep(1.2)
+                    st.rerun()
+                    
+        with col_ed2:
+            with st.container(border=True):
+                st.subheader("🗑️ Apagar Lançamento (Estorno)")
+                st.write("Use essa opção para deletar completamente uma comanda lançada por engano. O valor sairá dos relatórios imediatamente.")
+                id_remover = st.selectbox("Selecione o Número (ID) que deseja excluir do caixa:", vendas_visivel_df["ID_Lancamento"].tolist())
+                
+                linha_remover = vendas_df.iloc[id_remover]
+                st.warning(f"Você está deletando: **{linha_remover['Quantidade']}x {linha_remover['Item']}** no total de R$ {linha_remover['Valor Total']:.2f}.")
+                
+                if st.button("❌ Excluir Lançamento Errado", use_container_width=True):
+                    vendas_df = vendas_df.drop(id_remover).reset_index(drop=True)
+                    vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
+                    st.success("🗑️ Lançamento removido e caixa estornado!")
+                    time.sleep(1.2)
+                    st.rerun()
+    else:
+        st.info("Nenhuma venda registrada no sistema para ser corrigida.")
+
+# ---------------- MÓDULO 5: GERENCIAR BARBEIROS ----------------
 elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin":
     st.header("👥 Gestão de Barbeiros da Equipe")
     col_cad1, col_cad2 = st.columns(2, gap="large")
@@ -343,7 +399,7 @@ elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin"
         st.subheader("Profissionais Ativos")
         st.dataframe(barbeiros_df, use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 5: ESTOQUE & SERVIÇOS ----------------
+# ---------------- MÓDULO 6: ESTOQUE & SERVIÇOS ----------------
 elif menu == "📦 Estoque & Serviços":
     st.header("📦 Monitor do Estoque Conveniência e Serviços")
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
@@ -361,7 +417,7 @@ elif menu == "📦 Estoque & Serviços":
         st.subheader("💈 Catálogo Vigente de Serviços")
         st.dataframe(servicos_df, use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 6: GERENCIAR CATÁLOGO ----------------
+# ---------------- MÓDULO 7: GERENCIAR CATÁLOGO ----------------
 elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "admin":
     st.header("⚙️ Modificação de Catálogo e Preços")
     aba_serv, aba_prod = st.tabs(["💈 Serviços", "📦 Produtos/Bebidas"])
@@ -431,7 +487,7 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
                 time.sleep(1.2)
                 st.rerun()
 
-# ---------------- MÓDULO 7: PAINEL DE RELATÓRIOS ----------------
+# ---------------- MÓDULO 8: PAINEL DE RELATÓRIOS ----------------
 elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "admin":
     st.header("📊 Dashboard Financeiro - O Chefão")
     
@@ -444,12 +500,9 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
     lucro_liquido = faturamento - total_gastos
     
     c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("💰 FATURAMENTO BRUTO", f"R$ {faturamento:.2f}")
-    with c2:
-        st.metric("📉 TOTAL DE GASTOS", f"R$ {total_gastos:.2f}")
-    with c3:
-        st.metric("🔥 LUCRO LÍQUIDO REAL", f"R$ {lucro_liquido:.2f}")
+    with c1: st.metric("💰 FATURAMENTO BRUTO", f"R$ {faturamento:.2f}")
+    with c2: st.metric("📉 TOTAL DE GASTOS", f"R$ {total_gastos:.2f}")
+    with c3: st.metric("🔥 LUCRO LÍQUIDO REAL", f"R$ {lucro_liquido:.2f}")
             
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container(border=True):
@@ -463,13 +516,11 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
                 porcentagem_servico = b["Comissão (%)"]
                 vendas_do_barbeiro = vendas_df[vendas_df["Barbeiro"] == nome_b]
                 
-                # Serviços
                 servicos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Serviço"]
                 faturamento_servicos = servicos_b["Valor Total"].sum()
                 total_cortes = servicos_b["Quantidade"].sum()
                 valor_comissao_servico = faturamento_servicos * (porcentagem_servico / 100.0)
                 
-                # Produtos
                 produtos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Produto"]
                 valor_comissao_produto = 0.0
                 total_produtos_vendidos = produtos_b["Quantidade"].sum()
@@ -506,16 +557,11 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
     with tab1: st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
     with tab2: st.dataframe(gastos_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 8: CONFIGURAÇÕES (OPÇÕES SEPARADAS DE LIMPEZA) ----------------
+# ---------------- MÓDULO 9: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações" and st.session_state["perfil"] == "admin":
     st.header("⚙️ Área de Configurações e Reset")
-    
-    st.write("Escolha abaixo qual banco de dados deseja redefinir. Lembre-se que estas ações são definitivas!")
-    
-    # OPÇÃO 1: APENAS ZERAR ASSINATURAS
     with st.container(border=True):
         st.subheader("💳 Limpar Apenas o Clube de Assinaturas")
-        st.write("Esta ação apaga todos os clientes assinantes cadastrados e o histórico de frequência de cortes do plano, mas não mexe no dinheiro do caixa.")
         if st.button("🚨 Zerar Clientes de Assinatura", type="primary", use_container_width=True):
             pd.DataFrame(columns=["Cliente", "Plano", "Data Inicio", "Data Vencimento", "Valor Mensal"]).to_csv(ARQUIVO_ASSINATURAS, index=False, encoding='utf-8')
             pd.DataFrame(columns=["Data", "Cliente", "Serviço Usado", "Barbeiro Atendeu"]).to_csv(ARQUIVO_PRESENCAS, index=False, encoding='utf-8')
@@ -524,11 +570,8 @@ elif menu == "⚙️ Configurações" and st.session_state["perfil"] == "admin":
             st.rerun()
             
     st.markdown("<br>", unsafe_allow_html=True)
-    
-    # OPÇÃO 2: ZERAR CAIXA GERAL
     with st.container(border=True):
         st.subheader("💰 Limpar Caixa Geral (Vendas)")
-        st.write("Esta ação apaga todo o histórico de vendas normais do balcão e zera o seu faturamento bruto bruto para R$ 0,00.")
         if st.button("🚨 Limpar Todas as Vendas e Zerar Caixa", use_container_width=True):
             pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"]).to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
             st.success("O caixa geral foi redefinido!")
