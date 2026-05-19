@@ -121,7 +121,6 @@ if menu == "💸 Lançar Venda":
     with col2:
         forma_pagamento = st.selectbox("Forma de Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
         
-        # Puxa os barbeiros cadastrados no sistema para selecionar na lista
         lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
         barbeiro_venda = st.selectbox("Barbeiro Profissional:", lista_barbeiros_sistema)
         
@@ -172,7 +171,7 @@ elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "adm
             st.success("Gasto registrado com sucesso!")
             st.rerun()
 
-# ---------------- MÓDULO 3: CADASTRAR BARBEIRO (NOVO) ----------------
+# ---------------- MÓDULO 3: CADASTRAR BARBEIRO ----------------
 elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin":
     st.header("Gerenciamento de Barbeiros da Equipe")
     
@@ -234,7 +233,6 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
     st.subheader("💸 Relatório de Comissões por Barbeiro (Apenas Serviços)")
     
     if not vendas_df.empty and not barbeiros_df.empty:
-        # Filtrar apenas o que é serviço (corte/barba) para comissão
         servicos_realizados = vendas_df[vendas_df["Tipo"] == "Serviço"]
         
         relatorio_comissao = []
@@ -242,8 +240,7 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
             nome_b = b["Nome"]
             porcentagem_b = b["Comissão (%)"]
             
-            vendas_do_barbeiro = services_realizados if 'services_realizados' in locals() else servicos_realizados
-            vendas_do_barbeiro = vendas_do_barbeiro[vendas_do_barbeiro["Barbeiro"] == nome_b]
+            vendas_do_barbeiro = servicos_realizados[servicos_realizados["Barbeiro"] == nome_b]
             
             total_arrecadado = vendas_do_barbeiro["Valor Total"].sum()
             total_cortes = vendas_do_barbeiro["Quantidade"].sum()
