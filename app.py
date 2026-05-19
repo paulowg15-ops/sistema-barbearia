@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+import time
 
 # Configuração da página da Barbearia
 st.set_page_config(page_title="Barbearia - Sistema Avançado", layout="wide")
@@ -120,10 +121,8 @@ if menu == "💸 Lançar Venda":
         
     with col2:
         forma_pagamento = st.selectbox("Forma de Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
-        
         lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
         barbeiro_venda = st.selectbox("Barbeiro Profissional:", lista_barbeiros_sistema)
-        
         cliente = st.text_input("Nome do Cliente (Opcional):", value="Avulso")
     
     preco_unitario = tabela_ref[tabela_ref.iloc[:, 1] == item_selecionado][nome_col_preco].values[0]
@@ -144,7 +143,10 @@ if menu == "💸 Lançar Venda":
         }])
         vendas_df = pd.concat([vendas_df, nova_venda], ignore_index=True)
         vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
-        st.success(f"Venda registrada com sucesso!")
+        
+        # TELA DE CONFIRMAÇÃO VISUAL 
+        st.success(f"✅ SUCESSO! {categoria_venda} '{item_selecionado}' lançado corretamente no caixa!")
+        time.sleep(1.5)
         st.rerun()
 
 # ---------------- MÓDULO 2: LANÇAR GASTO ----------------
@@ -168,8 +170,12 @@ elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "adm
             }])
             gastos_df = pd.concat([gastos_df, novo_gasto], ignore_index=True)
             gastos_df.to_csv(ARQUIVO_GASTOS, index=False, encoding='utf-8')
-            st.success("Gasto registrado com sucesso!")
+            
+            st.success(f"✅ Gasto '{descricao}' registrado e subtraído do lucro real!")
+            time.sleep(1.5)
             st.rerun()
+        else:
+            st.error("Preencha a descrição e o valor corretamente.")
 
 # ---------------- MÓDULO 3: CADASTRAR BARBEIRO ----------------
 elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin":
@@ -185,7 +191,9 @@ elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin"
                 novo_b = pd.DataFrame([{"Nome": novo_nome, "Comissão (%)": nova_comissao}])
                 barbeiros_df = pd.concat([barbeiros_df, novo_b], ignore_index=True)
                 barbeiros_df.to_csv(ARQUIVO_BARBEIROS, index=False, encoding='utf-8')
-                st.success(f"{novo_nome} cadastrado com sucesso!")
+                
+                st.success(f"👤 Profissional '{novo_nome}' adicionado à equipe!")
+                time.sleep(1.5)
                 st.rerun()
             else:
                 st.error("Nome inválido ou barbeiro já cadastrado.")
@@ -194,7 +202,7 @@ elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin"
         st.subheader("Profissionais Ativos")
         st.dataframe(barbeiros_df, use_container_width=True)
 
-# ---------------- MÓDULO 4: ESTOQUE & SERVIÇOS (VISUALIZAÇÃO) ----------------
+# ---------------- MÓDULO 4: ESTOQUE & SERVIÇOS ----------------
 elif menu == "📦 Estoque & Serviços":
     st.header("Controle de Estoque e Catálogo")
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
@@ -210,7 +218,7 @@ elif menu == "📦 Estoque & Serviços":
     st.subheader("💈 Lista de Serviços Prestados")
     st.dataframe(servicos_df, use_container_width=True)
 
-# ---------------- MÓDULO 5: GERENCIAR CATÁLOGO (NOVO) ----------------
+# ---------------- MÓDULO 5: GERENCIAR CATÁLOGO ----------------
 elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "admin":
     st.header("⚙️ Gerenciar e Configurar Catálogo (Serviços e Produtos)")
     
@@ -230,7 +238,9 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
                 novo_s = pd.DataFrame([{"ID": novo_id, "Nome do Serviço": s_nome, "Preço (R$)": s_preco}])
                 servicos_df = pd.concat([servicos_df, novo_s], ignore_index=True)
                 servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-                st.success(f"Serviço '{s_nome}' incluído!")
+                
+                st.success(f"✨ Novo serviço '{s_nome}' criado com sucesso!")
+                time.sleep(1.5)
                 st.rerun()
                 
         st.markdown("---")
@@ -241,7 +251,9 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
         if st.button("Salvar Novo Preço"):
             servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
             servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-            st.success("Preço atualizado com sucesso!")
+            
+            st.success("🎉 Preço alterado e atualizado no catálogo!")
+            time.sleep(1.5)
             st.rerun()
 
     with aba_prod:
@@ -262,7 +274,9 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
                 novo_p = pd.DataFrame([{"ID": novo_id, "Nome do Produto": p_nome, "Preço de Venda": p_venda, "Preço de Custo": p_custo, "Estoque Inicial": p_estoque}])
                 produtos_df = pd.concat([produtos_df, novo_p], ignore_index=True)
                 produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
-                st.success(f"Produto '{p_nome}' incluído no estoque!")
+                
+                st.success(f"📦 Produto '{p_nome}' cadastrado nas prateleiras!")
+                time.sleep(1.5)
                 st.rerun()
                 
         st.markdown("---")
@@ -281,7 +295,9 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
         if st.button("Salvar Modificações do Produto"):
             produtos_df.loc[produtos_df["Nome do Produto"] == prod_editar, ["Preço de Venda", "Preço de Custo", "Estoque Inicial"]] = [ed_venda, ed_custo, ed_estoque]
             produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
-            st.success("Produto atualizado com sucesso!")
+            
+            st.success("🔥 Informações do produto atualizadas com sucesso!")
+            time.sleep(1.5)
             st.rerun()
 
 # ---------------- MÓDULO 6: PAINEL DE RELATÓRIOS ----------------
