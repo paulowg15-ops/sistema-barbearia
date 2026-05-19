@@ -190,7 +190,7 @@ if menu == "💸 Abrir Comanda (Vendas)":
             else:
                 st.info("A comanda eletrônica está limpa e vazia.")
 
-# ---------------- MÓDULO 2: CLUBE DE ASSINATURAS ----------------
+# ---------------- MÓDULO 2: CLUBE DE ASSINATURAS (COM EXCLUSÃO DE ASSINANTE) ----------------
 elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admin":
     st.header("💳 Clube de Assinaturas")
     
@@ -244,6 +244,17 @@ elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admi
                     st.warning(f"⚠️ **{r['Cliente']}** | Vence em: {r['Data Vencimento']} (Atenção: Restam {dias_restantes} dias para expirar!)")
                 else:
                     st.info(f"🟢 **{r['Cliente']}** | Vencimento: {r['Data Vencimento']} (Regular: {dias_restantes} dias)")
+            
+            # ÁREA NOVA: REMOVER APENAS UM ASSINANTE ESPECÍFICO
+            st.markdown("---")
+            st.subheader("❌ Cancelar / Remover Assinante Específico")
+            assinante_remover = st.selectbox("Selecione o Cliente para Cancelar Plano:", assinaturas_df["Cliente"].tolist())
+            if st.button("Remover Assinatura do Cliente", type="secondary"):
+                assinaturas_df = assinaturas_df[assinaturas_df["Cliente"] != assinante_remover]
+                assinaturas_df.to_csv(ARQUIVO_ASSINATURAS, index=False, encoding='utf-8')
+                st.success(f"🗑️ O cliente '{assinante_remover}' foi removido do clube de assinaturas.")
+                time.sleep(1.2)
+                st.rerun()
         else:
             st.info("Nenhum assinante cadastrado.")
 
@@ -495,12 +506,31 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
     with tab1: st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
     with tab2: st.dataframe(gastos_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 8: CONFIGURAÇÕES ----------------
+# ---------------- MÓDULO 8: CONFIGURAÇÕES (OPÇÕES SEPARADAS DE LIMPEZA) ----------------
 elif menu == "⚙️ Configurações" and st.session_state["perfil"] == "admin":
-    st.header("Configurações Globais")
+    st.header("⚙️ Área de Configurações e Reset")
+    
+    st.write("Escolha abaixo qual banco de dados deseja redefinir. Lembre-se que estas ações são definitivas!")
+    
+    # OPÇÃO 1: APENAS ZERAR ASSINATURAS
     with st.container(border=True):
-        st.warning("Ação destrutiva. Limpa todas as vendas do banco de dados definitivamente.")
-        if st.button("🚨 Limpar Todas as Vendas e Zerar Caixa", type="primary", use_container_width=True):
+        st.subheader("💳 Limpar Apenas o Clube de Assinaturas")
+        st.write("Esta ação apaga todos os clientes assinantes cadastrados e o histórico de frequência de cortes do plano, mas não mexe no dinheiro do caixa.")
+        if st.button("🚨 Zerar Clientes de Assinatura", type="primary", use_container_width=True):
+            pd.DataFrame(columns=["Cliente", "Plano", "Data Inicio", "Data Vencimento", "Valor Mensal"]).to_csv(ARQUIVO_ASSINATURAS, index=False, encoding='utf-8')
+            pd.DataFrame(columns=["Data", "Cliente", "Serviço Usado", "Barbeiro Atendeu"]).to_csv(ARQUIVO_PRESENCAS, index=False, encoding='utf-8')
+            st.success("O Clube de Assinaturas foi resetado com sucesso!")
+            time.sleep(1.2)
+            st.rerun()
+            
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # OPÇÃO 2: ZERAR CAIXA GERAL
+    with st.container(border=True):
+        st.subheader("💰 Limpar Caixa Geral (Vendas)")
+        st.write("Esta ação apaga todo o histórico de vendas normais do balcão e zera o seu faturamento bruto bruto para R$ 0,00.")
+        if st.button("🚨 Limpar Todas as Vendas e Zerar Caixa", use_container_width=True):
             pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"]).to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
-            st.success("Sistema redefinido!")
+            st.success("O caixa geral foi redefinido!")
+            time.sleep(1.2)
             st.rerun()
