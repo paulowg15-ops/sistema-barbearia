@@ -4,42 +4,83 @@ from datetime import datetime, timedelta
 import os
 import time
 
-# Configuração da página da Barbearia com o nome oficial e responsivo
+# Configuração da página da Barbearia com o nome oficial completo
 st.set_page_config(page_title="O Chefão Barbearia e Conveniência", layout="wide", initial_sidebar_state="expanded")
 
-# --- CUSTOMIZAÇÃO GERAL DE ESTILO PRETO E AMARELO (THEME DESIGN) ---
+# --- CUSTOMIZAÇÃO COMPLETA DE ESTILO PRETO E AMARELO COM ALTA VISIBILIDADE ---
 st.markdown("""
     <style>
-        /* Fundo geral escuro */
+        /* Fundo geral do aplicativo (Preto Carbono) */
         .stApp {
             background-color: #0E0E10;
-            color: #FFFFFF;
+            color: #FFFFFF !important;
         }
-        /* Cor dos Títulos Principais - Amarelo Ouro */
+        
+        /* Títulos Principais em Amarelo Ouro */
         h1, h2, h3, h4, h5, h6 {
             color: #FFCC00 !important;
             font-family: 'Arial Black', sans-serif;
         }
-        /* Customização dos Containers/Bordas */
+        
+        /* Textos comuns, parágrafos e informativos da tela */
+        p, span, .stMarkdown {
+            color: #E4E4E7 !important;
+        }
+        
+        /* Ajuste de labels (nomes em cima dos campos de digitação) */
+        label, p[data-testid="stWidgetLabel"] {
+            color: #FFCC00 !important;
+            font-weight: bold !important;
+            font-size: 15px !important;
+        }
+        
+        /* Customização dos Containers/Bordas com destaque amarelo */
         div[data-testid="stContainer"] {
             background-color: #16161A !important;
-            border: 1px solid #FFCC00 !important;
-            border-radius: 8px !important;
-            padding: 15px !important;
+            border: 2px solid #FFCC00 !important;
+            border-radius: 10px !important;
+            padding: 20px !important;
         }
-        /* Labels e textos de formulários */
-        label {
-            color: #E4E4E7 !important;
-            font-weight: bold !important;
+        
+        /* Correção do texto dentro das Caixas de Seleção e Inputs (Tornando tudo visível) */
+        .stSelectbox div, .stTextInput div, .stNumberInput div, .stDateInput div {
+            color: #FFFFFF !important;
         }
-        /* Customização da barra lateral */
-        section[data-testid="stSidebar"] {
-            background-color: #16161A !important;
-            border-right: 2px solid #FFCC00 !important;
-        }
-        .st_toast {
+        
+        /* Customização dos BOTÕES (Fundo Amarelo Ouro com Texto Preto para contraste perfeito) */
+        button[data-testid="baseButton-secondary"], button[data-testid="baseButton-primary"] {
             background-color: #FFCC00 !important;
             color: #000000 !important;
+            font-weight: bold !important;
+            font-size: 16px !important;
+            border: 1px solid #FFCC00 !important;
+            border-radius: 6px !important;
+            transition: 0.3s;
+        }
+        
+        /* Efeito ao passar o mouse por cima do botão */
+        button[data-testid="baseButton-secondary"]:hover, button[data-testid="baseButton-primary"]:hover {
+            background-color: #E6B800 !important;
+            color: #000000 !important;
+            border-color: #E6B800 !important;
+        }
+        
+        /* Customização da Barra Lateral */
+        section[data-testid="stSidebar"] {
+            background-color: #16161A !important;
+            border-right: 3px solid #FFCC00 !important;
+        }
+        
+        /* Ajuste dos textos e botões dentro da barra lateral */
+        section[data-testid="stSidebar"] .stRadio label {
+            color: #FFFFFF !important;
+        }
+        
+        /* Cor das tabelas de dados para não sumirem no escuro */
+        .stDataFrame {
+            background-color: #16161A !important;
+            color: #FFFFFF !important;
+            border-radius: 6px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -107,14 +148,14 @@ if "carrinho_comanda" not in st.session_state:
 
 if not st.session_state["autenticado"]:
     st.markdown("<h1 style='text-align: center;'>💈 O Chefão Barbearia e Conveniência</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #A1A1AA;'>Entre com suas credenciais para gerenciar o sistema</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Entre com suas credenciais para gerenciar o sistema</p>", unsafe_allow_html=True)
     
     col_login, _ = st.columns([1, 2])
     with col_login:
         with st.container():
             usuario = st.text_input("Usuário:")
             senha = st.text_input("Senha:", type="password")
-            if st.button("🔓 Acessar Sistema", type="primary", use_container_width=True):
+            if st.button("🔓 Acessar Sistema", use_container_width=True):
                 if usuario == "admin" and senha == "barba123":
                     st.session_state["autenticado"] = True
                     st.session_state["perfil"] = "admin"
@@ -148,7 +189,7 @@ if st.sidebar.button("🚪 Sair com Segurança", use_container_width=True):
 
 # ---------------- MÓDULO 1: COMANDA ELETRÔNICA ----------------
 if menu == "💸 Abrir Comanda (Vendas)":
-    st.markdown("<h2>📋 Caixa e Comanda Eletrônica</h2>", unsafe_allow_html=True)
+    st.markdown("<h2>📋 Caixa e Comanda Eletrônica - O Chefão</h2>", unsafe_allow_html=True)
     st.markdown("Adicione os consumos de barbearia e conveniência do cliente.")
     
     col_com1, col_com2 = st.columns([1, 1], gap="large")
@@ -204,7 +245,7 @@ if menu == "💸 Abrir Comanda (Vendas)":
                     cliente = st.text_input("Identificação do Cliente:", value="Avulso")
                 
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🚀 Finalizar Conta", type="primary", use_container_width=True):
+                if st.button("🚀 Finalizar Conta e Registrar", use_container_width=True):
                     data_atual = datetime.now().strftime("%Y-%m-%d")
                     novas_linhas = []
                     for item_c in st.session_state["carrinho_comanda"]:
@@ -246,7 +287,7 @@ elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admi
             with col_as3:
                 forma_pago_ass = st.selectbox("Canal de Recebimento:", ["Pix", "Dinheiro", "Cartão"])
             
-            if st.button("🔥 Ativar Plano", type="primary", use_container_width=True):
+            if st.button("🔥 Ativar Plano", use_container_width=True):
                 if nome_ass != "":
                     venc_calc = (data_pago + timedelta(days=30)).strftime("%Y-%m-%d")
                     nova_ass = pd.DataFrame([{
@@ -293,7 +334,7 @@ elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admi
                 lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
                 barbeiro_atendeu = st.selectbox("Barbeiro Atendente:", lista_barbeiros_sistema)
                 
-                if st.button("💾 Validar Entrada", type="primary", use_container_width=True):
+                if st.button("💾 Validar Entrada", use_container_width=True):
                     nova_presenca = pd.DataFrame([{
                         "Data": datetime.now().strftime("%Y-%m-%d"), "Cliente": cliente_uso,
                         "Serviço Usado": servico_uso, "Barbeiro Atendeu": barbeiro_atendeu
@@ -324,7 +365,7 @@ elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "adm
         with col2:
             categoria = st.selectbox("Categoria:", ["Infraestrutura (Luz/Água/Aluguel)", "Produtos (Reposição)", "Equipamentos", "Outros"])
             
-        if st.button("💾 Gravar Gasto", type="primary", use_container_width=True):
+        if st.button("💾 Gravar Gasto", use_container_width=True):
             if descricao != "" and valor_gasto > 0:
                 novo_gasto = pd.DataFrame([{
                     "Data": datetime.now().strftime("%Y-%m-%d"), "Descrição": descricao, "Valor (R$)": valor_gasto, "Categoria": categoria
@@ -345,7 +386,7 @@ elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin"
             novo_nome = st.text_input("Nome:")
             nova_comissao = st.number_input("Comissão nos Serviços (%):", min_value=0.0, max_value=100.0, value=50.0, step=5.0)
             
-            if st.button("Cadastrar Barbeiro", type="primary", use_container_width=True):
+            if st.button("Cadastrar Barbeiro", use_container_width=True):
                 if novo_nome != "" and novo_nome not in barbeiros_df["Nome"].tolist():
                     novo_b = pd.DataFrame([{"Nome": novo_nome, "Comissão (%)": nova_comissao}])
                     barbeiros_df = pd.concat([barbeiros_df, novo_b], ignore_index=True)
@@ -397,7 +438,7 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
             st.markdown("### Adicionar Novo Serviço")
             s_nome = st.text_input("Nome do Serviço:")
             s_preco = st.number_input("Preço (R$):", min_value=0.0, value=20.0, step=5.0)
-            if st.button("Criar Serviço", type="primary"):
+            if st.button("Criar Serviço"):
                 if s_nome != "":
                     novo_id = int(servicos_df["ID"].max() + 1) if not servicos_df.empty else 1
                     novo_s = pd.DataFrame([{"ID": novo_id, "Nome do Serviço": s_nome, "Preço (R$)": s_preco}])
@@ -412,10 +453,10 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
             st.markdown("### Mudar Preço Existente")
             servico_editar = st.selectbox("Escolha o Serviço:", servicos_df["Nome do Serviço"].tolist())
             novo_preco_s = st.number_input("Modificar Valor para (R$):", min_value=0.0, value=float(servicos_df[servicos_df["Nome do Serviço"] == servico_editar]["Preço (R$)"].values[0]))
-            if st.button("Atualizar Valor"):
+            if st.button("Atualizar Valor", use_container_width=True):
                 servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
                 servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-                st.success("🎉 Preço atualizado!")
+                st.success("🎉 Preço updated!")
                 time.sleep(1.2)
                 st.rerun()
 
@@ -427,9 +468,9 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
             with col_p2: p_venda = st.number_input("Preço Venda:", min_value=0.0, value=10.0)
             with col_p3: p_custo = st.number_input("Preço Custo:", min_value=0.0, value=5.0)
             with col_p4: p_estoque = st.number_input("Estoque Inicial:", min_value=0, value=10)
-            with col_p5: p_comis = st.number_input("Comissão Barbeiro:", min_value=0.0, value=0.0)
+            with col_p5: p_comis = st.number_input("Comissão Barbeiro (R$):", min_value=0.0, value=0.0)
                 
-            if st.button("Salvar Produto", type="primary", use_container_width=True):
+            if st.button("Salvar Produto", use_container_width=True):
                 if p_nome != "":
                     novo_id = int(produtos_df["ID"].max() + 1) if not produtos_df.empty else 1
                     novo_p = pd.DataFrame([{"ID": novo_id, "Nome do Produto": p_nome, "Preço de Venda": p_venda, "Preço de Custo": p_custo, "Estoque Inicial": p_estoque, "Comissão Barbeiro (R$)": p_comis}])
@@ -543,7 +584,7 @@ elif menu == "⚙️ Configurações" and st.session_state["perfil"] == "admin":
     st.header("Configurações Globais")
     with st.container():
         st.warning("Ação destrutiva. Limpa todas as vendas do banco de dados definitivamente.")
-        if st.button("🚨 Limpar Todas as Vendas e Zerar Caixa", type="primary", use_container_width=True):
+        if st.button("🚨 Limpar Todas as Vendas e Zerar Caixa", use_container_width=True):
             pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"]).to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
             st.success("Sistema redefinido!")
             st.rerun()
