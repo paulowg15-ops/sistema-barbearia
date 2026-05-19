@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 import os
 import time
 
-# Configuração da página da Barbearia com layout responsivo
-st.set_page_config(page_title="Barbearia - Sistema Premium", layout="wide", initial_sidebar_state="expanded")
+# Configuração da página da Barbearia com o nome correto
+st.set_page_config(page_title="Barbearia O Chefão - Sistema Premium", layout="wide", initial_sidebar_state="expanded")
 
 # Bancos de dados em formato CSV
 ARQUIVO_SERVICOS = "servicos.csv"
@@ -69,8 +69,8 @@ if "carrinho_comanda" not in st.session_state:
     st.session_state["carrinho_comanda"] = []
 
 if not st.session_state["autenticado"]:
-    st.markdown("<h2 style='text-align: center; color: #1E3A8A;'>💈 Painel de Controle Oficial</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #6B7280;'>Introduza as suas credenciais para gerir a barbearia</p>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #1E3A8A;'>💈 Barbearia O Chefão</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #6B7280;'>Introduza as suas credenciais para gerir o sistema</p>", unsafe_allow_html=True)
     
     col_login, _ = st.columns([1, 2])
     with col_login:
@@ -90,8 +90,8 @@ if not st.session_state["autenticado"]:
                     st.error("Usuário ou senha incorretos!")
     st.stop()
 
-# --- DESIGN DO MENU LATERAL ---
-st.sidebar.markdown("<h2 style='color: #1E3A8A; text-align: center;'>✂️ CredForte Menu</h2>", unsafe_allow_html=True)
+# --- DESIGN DO MENU LATERAL CORRIGIDO ---
+st.sidebar.markdown("<h2 style='color: #1E3A8A; text-align: center;'>✂️ O Chefão</h2>", unsafe_allow_html=True)
 st.sidebar.markdown(f"Perfil Ativo: **{st.session_state['perfil'].upper()}**")
 st.sidebar.markdown("---")
 
@@ -109,9 +109,9 @@ if st.sidebar.button("🚪 Sair com Segurança", use_container_width=True):
     st.session_state["carrinho_comanda"] = []
     st.rerun()
 
-# ---------------- MÓDULO 1: COMANDA ELETRÔNICA (VISUAL MELHORADO) ----------------
+# ---------------- MÓDULO 1: COMANDA ELETRÔNICA ----------------
 if menu == "💸 Abrir Comanda (Vendas)":
-    st.markdown("<h2 style='color: #1E3A8A;'>📋 Caixa Geral e Comanda Eletrônica</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color: #1E3A8A;'>📋 Caixa Geral - O Chefão</h2>", unsafe_allow_html=True)
     st.markdown("Adicione os consumos do cliente passo a passo antes de fechar a conta única.")
     
     col_com1, col_com2 = st.columns([1, 1], gap="large")
@@ -190,9 +190,9 @@ if menu == "💸 Abrir Comanda (Vendas)":
             else:
                 st.info("A comanda eletrônica está limpa e vazia neste momento.")
 
-# ---------------- MÓDULO 2: CLUBE DE ASSINATURAS (VISUAL DE ALERTAS PREMIUM) ----------------
+# ---------------- MÓDULO 2: CLUBE DE ASSINATURAS ----------------
 elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admin":
-    st.markdown("<h2 style='color: #1E3A8A;'>💳 Controle do Clube de Assinaturas</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color: #1E3A8A;'>💳 Clube de Assinaturas - O Chefão</h2>", unsafe_allow_html=True)
     
     tab_ass1, tab_ass2, tab_ass3 = st.tabs(["👥 Lista e Controle de Membros", "🪪 Check-in de Presença", "📊 Relatório de Frequência"])
     
@@ -238,7 +238,6 @@ elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admi
                 venc_date = datetime.strptime(r["Data Vencimento"], "%Y-%m-%d").date()
                 dias_restantes = (venc_date - data_hoje).days
                 
-                # Alertas visuais muito mais chamativos
                 if dias_restantes < 0:
                     st.error(f"🔴 **{r['Cliente']}** | Plano: {r['Plano']} | Venceu em: {r['Data Vencimento']} (**Vencido há {abs(dias_restantes)} dias - Bloquear e Cobrar!**)")
                 elif dias_restantes <= 5:
@@ -283,7 +282,7 @@ elif menu == "💳 Clube de Assinaturas" and st.session_state["perfil"] == "admi
 
 # ---------------- MÓDULO 3: LANÇAR GASTO ----------------
 elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "admin":
-    st.markdown("<h2 style='color: #1E3A8A;'>📉 Lançamento de Gastos e Custos operacionais</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color: #1E3A8A;'>📉 Lançamento de Gastos e Custos</h2>", unsafe_allow_html=True)
     with st.container(border=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -427,9 +426,9 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
                 time.sleep(1.2)
                 st.rerun()
 
-# ---------------- MÓDULO 7: PAINEL DE RELATÓRIOS (DESIGN PREMIUM EM CARTÕES) ----------------
+# ---------------- MÓDULO 7: PAINEL DE RELATÓRIOS ----------------
 elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "admin":
-    st.markdown("<h2 style='color: #1E3A8A;'>📊 Dashboard e Fechamento Financeiro</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color: #1E3A8A;'>📊 Dashboard Financeiro - O Chefão</h2>", unsafe_allow_html=True)
     
     vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
@@ -439,7 +438,6 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
     total_gastos = gastos_df["Valor (R$)"].sum()
     lucro_liquido = faturamento - total_gastos
     
-    # EFEITO DE CARTÕES USANDO CONTAINER EM COLUNAS
     c1, c2, c3 = st.columns(3)
     with c1:
         with st.container(border=True):
@@ -513,7 +511,7 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
 
 # ---------------- MÓDULO 8: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações" and st.session_state["perfil"] == "admin":
-    st.markdown("<h2 style='color: #1E3A8A;'>⚙️ Configurações Críticas</h2>", unsafe_allow_html=True)
+    st.header("Configurações Globais")
     with st.container(border=True):
         st.warning("Ação destrutiva. Ao clicar no botão abaixo limpa todas as vendas do banco de dados definitivamente.")
         if st.button("🚨 Limpar Todas as Vendas e Zerar Caixa", type="primary", use_container_width=True):
