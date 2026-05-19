@@ -299,5 +299,107 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
         with col_ed2:
             ed_custo = st.number_input("Mudar Preço Custo:", value=float(item_linha["Preço de Custo"].values[0]))
         with col_ed3:
-            ed_estoque = st.number_input("Mudar Estoque Inicial:", value=int(item_
-                                                                             
+            ed_estoque = st.number_input("Mudar Estoque Inicial:", value=int(item_linha["Estoque Inicial"].values[0]))
+        with col_ed4:
+            ed_comis = st.number_input("Mudar Comissão Barbeiro (R$):", value=float(item_linha["Comissão Barbeiro (R$)"].values[0]))
+            
+        if st.button("Salvar Modificações do Produto"):
+            produtos_df.loc[produtos_df["Nome do Produto"] == prod_editar, ["Preço de Venda", "Preço de Custo", "Estoque Inicial", "Comissão Barbeiro (R$)"]] = [ed_venda, ed_custo, ed_estoque, ed_comis]
+            produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
+            st.success("🔥 Produto e Valor de Comissão atualizados com sucesso!")
+            time.sleep(1.2)
+            st.rerun()
+
+# ---------------- MÓDULO 6: PAINEL DE RELATÓRIOS (ATUALIZADO COM COMISSÃO DE PRODUTO) ----------------
+elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "admin":
+    st.header("Painel Estatístico, Financeiro e Comissões Integradas")
+    
+    vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
+    vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
+    gastos_df["Valor (R$)"] = pd.to_numeric(gastos_df["Valor (R$)"], errors='coerce').fillna(0)
+    
+    faturamento = vendas_df["Valor Total"].sum()
+    total_gastos = gastos_df["Valor (R$)"].sum()
+    lucro_liquido = faturamento - total_gastos
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Faturamento Bruto", f"R$ {faturamento:.2f}")
+    col2.metric("Total de Gastos", f"R$ {total_gastos:.2f}", delta=f"-R$ {total_gastos:.2f}", delta_color="inverse")
+    col3.metric("Lucro Líquido Real", f"R$ {lucro_liquido:.2f}")
+    
+    st.markdown("---")
+    st.subheader("💸 Relatório Unificado de Comissões Semanais por Barbeiro")
+    
+    if not barbeiros_df.empty:
+        relatorio_comissao = []
+        
+        # Mapeamento rápido de comissão por produto em dinheiro
+        mapa_comissao_produto = produtos_df.set_index("Nome do Produto")["Comissão Barbeiro (R$)"].to_dict()
+        
+        for _, b in barbeiros_df.iterrows():
+            nome_b = b["Nome"]
+            porcentagem_servico = b["Comissão (%)"]
+            
+            # Filtrar vendas deste barbeiro
+            vendas_do_barbeiro = vendas_df[vendas_df["Barbeiro"] == nome_b]
+            
+            # 1. Cálculo de Serviços (Porcentagem)
+            servicos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Serviço"]
+            faturamento_servicos = servicos_b["Valor Total"].sum()
+            total_cortes = servicos_b["Quantidade"].sum()
+            valor_comissao_servico = faturamento_servicos * (porcentagem_servico / 100.0)
+            
+            # 2. Cálculo de Produtos (Valor Fixo por Item)
+            produtos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Produto"]
+            valor_comissao_produto = 0.0
+            total_produtos_vendidos = produtos_b["Quantidade"].sum()
+            
+            for _, venda_p in produtos_b.iterrows():
+                nome_p = venda_p["Item"]
+                qtd_p = venda_p["Quantidade"]
+                comissao_unitaria_p = mapa_comissao_produto.get(nome_p, 0.0)
+                valor_comissao_produto += float(comissao_unitaria_p) * float(qtd_p)
+                
+            # Total Geral a pagar
+            total_geral_a_pagar = valor_comissao_servico + valor_comissao_produto
+            
+            relatorio_comissao.append({
+                "Barbeiro": nome_b,
+                "Qtd Serviços": int(total_cortes),
+                "Comissão Serviços": f"R$ {valor_comissao_servico:.2f} ({int(porcentagem_servico)}%)",
+                "Qtd Produtos": int(total_produtos_vendidos),
+                "Comissão Produtos": f"R$ {valor_comissao_produto:.2f}",
+                "TOTAL A PAGAR (R$)": f"R$ {total_geral_a_pagar:.2f}"
+            })
+            
+        st.dataframe(pd.DataFrame(relatorio_comissao), use_container_width=True)
+    else:
+        st.info("Nenhum barbeiro ativo cadastrado.")
+        
+    st.markdown("---")
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        st.subheader("📅 Faturamento Diário")
+        if not vendas_df.empty:
+            st.line_chart(vendas_df.groupby("Data")["Valor Total"].sum())
+    with col_g2:
+        st.subheader("💰 Divisão de Receitas")
+        if not vendas_df.empty:
+            st.bar_chart(vendas_df.groupby("Tipo")["Valor Total"].sum())
+
+    st.markdown("---")
+    tab1, tab2 = st.tabs(["📋 Histórico de Vendas", "📉 Histórico de Gastos"])
+    with tab1:
+        st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True)
+    with tab2:
+        st.dataframe(gastos_df.sort_index(ascending=False), use_container_width=True)
+
+# ---------------- MÓDULO 7: CONFIGURAÇÕES ----------------
+elif menu == "⚙️ Configurações" and st.session_state["perfil"] == "admin":
+    st.header("Configurações Globais")
+    st.warning("Ações de Limpeza de Dados (Não podem ser desfeitas!)")
+    
+    if st.button("⚠️ Limpar Histórico de Vendas", type="primary"):
+        pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"]).to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
+        st.success("Histórico zerado!")
+        st.rerun()
