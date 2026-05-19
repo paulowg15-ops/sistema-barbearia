@@ -7,145 +7,146 @@ import os
 st.set_page_config(page_title="Barbearia - Controle de Estoque e Vendas", layout="wide")
 st.title("💈 Sistema de Controle - Barbearia")
 
-# Nome exato do arquivo com o espaço antes do ponto
-EXCEL_FILE = "Sistema_Controle_Barbearia .xlsx"
+# Arquivos de texto simples para armazenar os dados (Sem risco de dar erro)
+ARQUIVO_SERVICOS = "servicos.csv"
+ARQUIVO_PRODUTOS = "produtos.csv"
+ARQUIVO_VENDAS = "vendas.csv"
 
-# Função para carregar os dados do Excel de forma segura
-def carregar_dados():
-    if os.path.exists(EXCEL_FILE):
-        try:
-            xl = pd.ExcelFile(EXCEL_FILE)
-            abas_existentes = xl.sheet_names
-            
-            # Encontrar os nomes das abas ignorando espaços em branco nas pontas
-            aba_servicos = next((x for x in abas_existentes if x.strip() == "Serviços"), None)
-            aba_produtos = next((x for x in abas_existentes if x.strip() == "Produtos"), None)
-            aba_vendas = next((x for x in abas_existentes if x.strip() == "Vendas"), None)
-            
-            if not aba_servicos or not aba_produtos or not aba_vendas:
-                st.error(f"Erro: Não encontramos todas as abas necessárias no Excel. As abas atuais são: {abas_existentes}")
-                return None
-                
-            return {
-                "Serviços": pd.read_excel(EXCEL_FILE, sheet_name=aba_servicos),
-                "Produtos": pd.read_excel(EXCEL_FILE, sheet_name=aba_produtos),
-                "Vendas": pd.read_excel(EXCEL_FILE, sheet_name=aba_vendas)
-            }
-        except Exception as e:
-            st.error(f"Erro ao ler as abas do Excel: {e}")
-            return None
+# Função para garantir que os bancos de dados existam com os dados padrão
+def inicializar_banco_de_dados():
+    # 1. Inicializar Serviços se não existir
+    if not os.path.exists(ARQUIVO_SERVICOS):
+        df_servicos = pd.DataFrame([
+            {"ID": 1, "Nome do Serviço": "Corte Social", "Preço (R$)": 35.0},
+            {"ID": 2, "Nome do Serviço": "Barba Completa", "Preço (R$)": 25.0},
+            {"ID": 3, "Nome do Serviço": "Combo (Corte + Barba)", "Preço (R$)": 55.0},
+            {"ID": 4, "Nome do Serviço": "Acabamento / Pezinho", "Preço (R$)": 15.0},
+            {"ID": 5, "Nome do Serviço": "Platinado / Nevou", "Preço (R$)": 80.0}
+        ])
+        df_servicos.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
+
+    # 2. Inicializar Produtos se não existir
+    if not os.path.exists(ARQUIVO_PRODUTOS):
+        df_produtos = pd.DataFrame([
+            {"ID": 1, "Nome do Produto": "Pomada Modeladora", "Preço de Venda": 40.0, "Preço de Custo": 20.0, "Estoque Inicial": 10},
+            {"ID": 2, "Nome do Produto": "Cerveja Long Neck", "Preço de Venda": 8.0, "Preço de Custo": 4.0, "Estoque Inicial": 24},
+            {"ID": 3, "Nome do Produto": "Refrigerante Lata", "Preço de Venda": 5.0, "Preço de Custo": 2.5, "Estoque Inicial": 24},
+            {"ID": 4, "Nome do Produto": "Água Mineral", "Preço de Venda": 3.0, "Preço de Custo": 1.0, "Estoque Inicial": 10},
+            {"ID": 5, "Nome do Produto": "Óleo para Barba", "Preço de Venda": 35.0, "Preço de Custo": 18.0, "Estoque Inicial": 5}
+        ])
+        df_produtos.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
+
+    # 3. Inicializar Vendas se não existir
+    if not os.path.exists(ARQUIVO_VENDAS):
+        colunas_vendas = ["Data e Hora", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento"]
+        df_vendas = pd.DataFrame(columns=colunas_vendas)
+        df_vendas.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
+
+# Inicializa as tabelas automaticamente nos servidores do Streamlit
+inicializar_banco_de_dados()
+
+# Carregar os dados
+servicos_df = pd.read_csv(ARQUIVO_SERVICOS, encoding='utf-8')
+produtos_df = pd.read_csv(ARQUIVO_PRODUTOS, encoding='utf-8')
+vendas_df = pd.read_csv(ARQUIVO_VENDAS, encoding='utf-8')
+
+# Menu Lateral do Sistema
+menu = st.sidebar.radio("Navegação", ["💸 Lançar Venda", "📦 Estoque & Serviços", "📊 Relatórios (Dashboard)", "⚙️ Configurações"])
+
+# ---------------- MÓDULO 1: LANÇAR VENDA ----------------
+if menu == "💸 Lançar Venda":
+    st.header("Registrar Novo Atendimento / Venda")
+    
+    tipo = st.selectbox("O que foi vendido?", ["Serviço (Corte/Barba)", "Produto (Bebida/Pomada)"])
+    
+    if tipo == "Serviço (Corte/Barba)":
+        lista_itens = servicos_df["Nome do Serviço"].tolist()
+        tabela_ref = servicos_df
+        nome_col_preco = "Preço (R$)"
+        categoria_venda = "Serviço"
     else:
-        st.error(f"Arquivo Excel '{EXCEL_FILE}' não encontrado no GitHub!")
-        return None
-
-dados = carregar_dados()
-
-if dados is not None:
-    # Garantir que as colunas existam e sejam numéricas
-    colunas_vendas = ["Data e Hora", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento"]
-    for col in colunas_vendas:
-        if col not in dados["Vendas"].columns:
-            dados["Vendas"][col] = None
+        lista_itens = produtos_df["Nome do Produto"].tolist()
+        tabela_ref = produtos_df
+        nome_col_preco = "Preço de Venda"
+        categoria_venda = "Produto"
+        
+    item_selecionado = st.selectbox("Selecione o Item:", lista_itens)
+    qtd = st.number_input("Quantidade:", min_value=1, value=1, step=1)
+    forma_pagamento = st.selectbox("Forma de Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
+    
+    # Buscar o preço unitário
+    preco_unitario = tabela_ref[tabela_ref.iloc[:, 1] == item_selecionado][nome_col_preco].values[0]
+    valor_total = float(preco_unitario) * qtd
+    
+    st.write(f"### Valor Total: R$ {valor_total:.2f}")
+    
+    if st.button("Confirmar Lançamento", type="primary"):
+        nova_venda = pd.DataFrame([{
+            "Data e Hora": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "Item": item_selecionado,
+            "Tipo": categoria_venda,
+            "Quantidade": qtd,
+            "Valor Total": valor_total,
+            "Forma de Pagamento": forma_pagamento
+        }])
+        
+        # Unir e salvar novas vendas
+        vendas_df = pd.concat([vendas_df, nova_venda], ignore_index=True)
+        vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
             
-    dados["Vendas"]["Valor Total"] = pd.to_numeric(dados["Vendas"]["Valor Total"], errors='coerce').fillna(0)
-    dados["Vendas"]["Quantidade"] = pd.to_numeric(dados["Vendas"]["Quantidade"], errors='coerce').fillna(0)
+        st.success(f"Sucesso! {item_selecionado} lançado.")
+        st.rerun()
 
-    # Menu Lateral do Sistema
-    menu = st.sidebar.radio("Navegação", ["💸 Lançar Venda", "📦 Estoque & Serviços", "📊 Relatórios (Dashboard)", "⚙️ Configurações"])
+# ---------------- MÓDULO 2: ESTOQUE & SERVIÇOS ----------------
+elif menu == "📦 Estoque & Serviços":
+    st.header("Controle de Estoque e Catálogo")
+    
+    st.subheader("Lista de Produtos (Bebidas e Pomadas)")
+    
+    # Calcular estoque dinamicamente: Estoque Atual = Inicial - Quantidade Vendida
+    vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
+    produtos_calculados = produtos_df.copy()
+    
+    qtd_vendida_map = vendas_df[vendas_df["Tipo"] == "Produto"].groupby("Item")["Quantidade"].sum().to_dict()
+    
+    produtos_calculados["Quantidade Vendida"] = produtos_calculados["Nome do Produto"].map(qtd_vendida_map).fillna(0).astype(int)
+    produtos_calculados["Estoque Atual"] = produtos_calculados["Estoque Inicial"] - produtos_calculados["Quantidade Vendida"]
+    
+    st.dataframe(produtos_calculados, use_container_width=True)
+    
+    st.subheader("Lista de Serviços Prestados")
+    st.dataframe(servicos_df, use_container_width=True)
 
-    # ---------------- MÓDULO 1: LANÇAR VENDA ----------------
-    if menu == "💸 Lançar Venda":
-        st.header("Registrar Novo Atendimento / Venda")
+# ---------------- MÓDULO 3: RELATÓRIOS ----------------
+elif menu == "📊 Relatórios (Dashboard)":
+    st.header("Painel de Resultados Financeiros")
+    
+    if not vendas_df.empty:
+        vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
+        vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
         
-        tipo = st.selectbox("O que foi vendido?", ["Serviço (Corte/Barba)", "Produto (Bebida/Pomada)"])
+        faturamento = vendas_df["Valor Total"].sum()
+        total_cortes = vendas_df[vendas_df["Tipo"] == "Serviço"]["Quantidade"].sum()
+        total_produtos = vendas_df[vendas_df["Tipo"] == "Produto"]["Quantidade"].sum()
         
-        if tipo == "Serviço (Corte/Barba)":
-            lista_itens = dados["Serviços"]["Nome do Serviço"].tolist()
-            tabela_ref = dados["Serviços"]
-            nome_col_preco = "Preço (R$)"
-            categoria_venda = "Serviço"
-        else:
-            lista_itens = dados["Produtos"]["Nome do Produto"].tolist()
-            tabela_ref = dados["Produtos"]
-            nome_col_preco = "Preço de Venda"
-            categoria_venda = "Produto"
-            
-        item_selecionado = st.selectbox("Selecione o Item:", lista_itens)
-        qtd = st.number_input("Quantidade:", min_value=1, value=1, step=1)
-        forma_pagamento = st.selectbox("Forma de Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Faturamento Total", f"R$ {faturamento:.2f}")
+        col2.metric("Cortes Realizados", int(total_cortes))
+        col3.metric("Produtos Vendidos", int(total_produtos))
         
-        # Buscar o preço unitário
-        preco_unitario = tabela_ref[tabela_ref.iloc[:, 1] == item_selecionado][nome_col_preco].values[0]
-        valor_total = float(preco_unitario) * qtd
-        
-        st.write(f"### Valor Total: R$ {valor_total:.2f}")
-        
-        if st.button("Confirmar Lançamento", type="primary"):
-            nova_venda = pd.DataFrame([{
-                "Data e Hora": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "Item": item_selecionado,
-                "Tipo": categoria_venda,
-                "Quantidade": qtd,
-                "Valor Total": valor_total,
-                "Forma de Pagamento": forma_pagamento
-            }])
-            
-            # Adicionar nova venda
-            dados["Vendas"] = pd.concat([dados["Vendas"], nova_venda], ignore_index=True)
-            
-            # Salvar no Excel
-            with pd.ExcelWriter(EXCEL_FILE, engine="openpyxl") as writer:
-                dados["Serviços"].to_excel(writer, sheet_name="Serviços", index=False)
-                dados["Produtos"].to_excel(writer, sheet_name="Produtos", index=False)
-                dados["Vendas"].to_excel(writer, sheet_name="Vendas", index=False)
-                
-            st.success(f"Sucesso! {item_selecionado} lançado. Atualizando sistema...")
-            st.rerun()
+        st.subheader("Histórico de Vendas Recentes")
+        st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True)
+    else:
+        st.info("Nenhum lançamento ativo encontrado. Faturamento atual: R$ 0,00")
 
-    # ---------------- MÓDULO 2: ESTOQUE & SERVIÇOS ----------------
-    elif menu == "📦 Estoque & Serviços":
-        st.header("Controle de Estoque e Catálogo")
-        
-        st.subheader("Lista de Produtos (Bebidas e Pomadas)")
-        st.dataframe(dados["Produtos"], use_container_width=True)
-        
-        st.subheader("Lista de Serviços Prestados")
-        st.dataframe(dados["Serviços"], use_container_width=True)
-
-    # ---------------- MÓDULO 3: RELATÓRIOS ----------------
-    elif menu == "📊 Relatórios (Dashboard)":
-        st.header("Painel de Resultados Financeiros")
-        
-        vendas_df = dados["Vendas"].dropna(subset=["Item"])
-        
-        if not vendas_df.empty:
-            faturamento = vendas_df["Valor Total"].sum()
-            total_cortes = vendas_df[vendas_df["Tipo"] == "Serviço"]["Quantidade"].sum()
-            total_produtos = vendas_df[vendas_df["Tipo"] == "Produto"]["Quantidade"].sum()
-            
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Faturamento Total", f"R$ {faturamento:.2f}")
-            col2.metric("Cortes Realizados", int(total_cortes))
-            col3.metric("Produtos Vendidos", int(total_produtos))
-            
-            st.subheader("Histórico de Vendas Recentes")
-            st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True)
-        else:
-            st.info("Nenhuma venda cadastrada ou histórico limpo. Faturamento atual: R$ 0,00")
-
-    # ---------------- MÓDULO 4: CONFIGURAÇÕES (LIMPEZA) ----------------
-    elif menu == "⚙️ Configurações":
-        st.header("Configurações do Sistema")
-        st.write("Use esta área para gerenciar os dados armazenados na planilha.")
-        
-        st.warning("Atenção: A ação abaixo vai apagar os testes antigos para começar do zero.")
-        if st.button("⚠️ Limpar Todas as Vendas de Teste (Zerar Histórico)", type="primary"):
-            dados["Vendas"] = pd.DataFrame(columns=colunas_vendas)
-            
-            with pd.ExcelWriter(EXCEL_FILE, engine="openpyxl") as writer:
-                dados["Serviços"].to_excel(writer, sheet_name="Serviços", index=False)
-                dados["Produtos"].to_excel(writer, sheet_name="Produtos", index=False)
-                dados["Vendas"].to_excel(writer, sheet_name="Vendas", index=False)
-                
-            st.success("Histórico limpo com sucesso! O seu faturamento foi zerado.")
-            st.rerun()
+# ---------------- MÓDULO 4: CONFIGURAÇÕES (LIMPEZA) ----------------
+elif menu == "⚙️ Configurações":
+    st.header("Configurações do Sistema")
+    st.write("Use esta área para resetar o histórico do seu aplicativo.")
+    
+    st.warning("Atenção: A ação abaixo vai apagar o histórico de lançamentos para começar do zero.")
+    if st.button("⚠️ Limpar Tudo e Iniciar do Zero (Faturamento R$ 0,00)", type="primary"):
+        df_vendas_vazia = pd.DataFrame(columns=["Data e Hora", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento"])
+        df_vendas_vazia.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
+        st.success("Histórico limpo com sucesso!")
+        st.rerun()
