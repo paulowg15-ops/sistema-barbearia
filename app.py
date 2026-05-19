@@ -14,7 +14,6 @@ ARQUIVO_VENDAS = "vendas.csv"
 ARQUIVO_GASTOS = "gastos.csv"
 ARQUIVO_BARBEIROS = "barbeiros.csv"
 
-# Função para garantir que todas as tabelas existam com dados iniciais
 def inicializar_banco_de_dados():
     if not os.path.exists(ARQUIVO_SERVICOS):
         pd.DataFrame([
@@ -41,13 +40,10 @@ def inicializar_banco_de_dados():
         pd.DataFrame(columns=["Data", "Descrição", "Valor (R$)", "Categoria"]).to_csv(ARQUIVO_GASTOS, index=False, encoding='utf-8')
 
     if not os.path.exists(ARQUIVO_BARBEIROS):
-        pd.DataFrame([
-            {"Nome": "G.", "Comissão (%)": 50.0}
-        ]).to_csv(ARQUIVO_BARBEIROS, index=False, encoding='utf-8')
+        pd.DataFrame([{"Nome": "G.", "Comissão (%)": 50.0}]).to_csv(ARQUIVO_BARBEIROS, index=False, encoding='utf-8')
 
 inicializar_banco_de_dados()
 
-# Carregar os dados atuais
 servicos_df = pd.read_csv(ARQUIVO_SERVICOS, encoding='utf-8')
 produtos_df = pd.read_csv(ARQUIVO_PRODUTOS, encoding='utf-8')
 if "Comissão Barbeiro (R$)" not in produtos_df.columns:
@@ -57,11 +53,13 @@ vendas_df = pd.read_csv(ARQUIVO_VENDAS, encoding='utf-8')
 gastos_df = pd.read_csv(ARQUIVO_GASTOS, encoding='utf-8')
 barbeiros_df = pd.read_csv(ARQUIVO_BARBEIROS, encoding='utf-8')
 
-# --- SESSÃO DE LOGIN DE SEGURANÇA ---
+# --- SESSÃO DE LOGIN E COMANDA ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 if "perfil" not in st.session_state:
     st.session_state["perfil"] = None
+if "carrinho_comanda" not in st.session_state:
+    st.session_state["carrinho_comanda"] = []
 
 if not st.session_state["autenticado"]:
     st.title("💈 Acesso ao Sistema - Barbearia")
@@ -83,11 +81,11 @@ if not st.session_state["autenticado"]:
                 st.error("Usuário ou senha incorretos!")
     st.stop()
 
-# --- CONTROLE DE MENUS POR PERFIL ---
+# --- MENUS POR PERFIL ---
 if st.session_state["perfil"] == "admin":
-    opcoes_menu = ["💸 Lançar Venda", "📉 Lançar Gasto/Despesa", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "📊 Painel de Relatórios", "⚙️ Configurações"]
+    opcoes_menu = ["💸 Abrir Comanda (Vendas)", "📉 Lançar Gasto/Despesa", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "📊 Painel de Relatórios", "⚙️ Configurações"]
 else:
-    opcoes_menu = ["💸 Lançar Venda", "📦 Estoque & Serviços"]
+    opcoes_menu = ["💸 Abrir Comanda (Vendas)", "📦 Estoque & Serviços"]
 
 menu = st.sidebar.radio("Navegação", opcoes_menu)
 
@@ -96,14 +94,19 @@ st.sidebar.write(f"Conectado como: **{st.session_state['perfil'].upper()}**")
 if st.sidebar.button("🚪 Sair do Sistema"):
     st.session_state["autenticado"] = False
     st.session_state["perfil"] = None
+    st.session_state["carrinho_comanda"] = []
     st.rerun()
 
-# ---------------- MÓDULO 1: LANÇAR VENDA ----------------
-if menu == "💸 Lançar Venda":
-    st.header("Registrar Atendimento / Venda")
-    col1, col2 = st.columns(2)
-    with col1:
-        tipo = st.selectbox("Tipo de Venda:", ["Serviço (Corte/Barba)", "Produto (Bebida/Pomada)"])
+# ---------------- MÓDULO 1: COMANDA ELETRÔNICA (VENDAS) ----------------
+if menu == "💸 Abrir Comanda (Vendas)":
+    st.header("📋 Comanda Eletrônica de Consumo")
+    
+    col_com1, col_com2 = st.columns([1, 1])
+    
+    with col_com1:
+        st.subheader("➕ Adicionar Item à Comanda")
+        tipo = st.selectbox("Tipo de Item:", ["Serviço (Corte/Barba)", "Produto (Bebida/Pomada)"])
+        
         if tipo == "Serviço (Corte/Barba)":
             lista_itens = servicos_df["Nome do Serviço"].tolist()
             tabela_ref = servicos_df
@@ -118,34 +121,67 @@ if menu == "💸 Lançar Venda":
         item_selecionado = st.selectbox("Selecione o Item:", lista_itens)
         qtd = st.number_input("Quantidade:", min_value=1, value=1, step=1)
         
-    with col2:
-        forma_pagamento = st.selectbox("Forma de Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
-        lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
-        barbeiro_venda = st.selectbox("Barbeiro Profissional:", lista_barbeiros_sistema)
-        cliente = st.text_input("Nome do Cliente (Opcional):", value="Avulso")
-    
-    preco_unitario = tabela_ref[tabela_ref.iloc[:, 1] == item_selecionado][nome_col_preco].values[0]
-    valor_total = float(preco_unitario) * qtd
-    
-    st.write(f"### Valor Total do Lançamento: R$ {valor_total:.2f}")
-    
-    if st.button("Confirmar Lançamento", type="primary"):
-        nova_venda = pd.DataFrame([{
-            "Data": datetime.now().strftime("%Y-%m-%d"),
-            "Item": item_selecionado,
-            "Tipo": categoria_venda,
-            "Quantidade": qtd,
-            "Valor Total": valor_total,
-            "Forma de Pagamento": forma_pagamento,
-            "Barbeiro": barbeiro_venda,
-            "Cliente": cliente
-        }])
-        vendas_df = pd.concat([vendas_df, nova_venda], ignore_index=True)
-        vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
+        preco_unitario = tabela_ref[tabela_ref.iloc[:, 1] == item_selecionado][nome_col_preco].values[0]
+        subtotal_item = float(preco_unitario) * qtd
         
-        st.success(f"✅ SUCESSO! {categoria_venda} '{item_selecionado}' lançado por {barbeiro_venda}!")
-        time.sleep(1.2)
-        st.rerun()
+        if st.button("➕ Adicionar à Comanda", type="secondary"):
+            st.session_state["carrinho_comanda"].append({
+                "Item": item_selecionado,
+                "Tipo": categoria_venda,
+                "Quantidade": qtd,
+                "Valor Total": subtotal_item
+            })
+            st.toast(f"'{item_selecionado}' colocado na comanda!")
+            st.rerun()
+
+    with col_com2:
+        st.subheader("🛒 Resumo da Comanda Atual")
+        
+        if len(st.session_state["carrinho_comanda"]) > 0:
+            df_temp_carrinho = pd.DataFrame(st.session_state["carrinho_comanda"])
+            st.dataframe(df_temp_carrinho, use_container_width=True)
+            
+            valor_total_comanda = df_temp_carrinho["Valor Total"].sum()
+            st.write(f"### 💰 Total Acumulado: R$ {valor_total_comanda:.2f}")
+            
+            st.markdown("---")
+            st.subheader("🏁 Finalizar Pagamento")
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                forma_pagamento = st.selectbox("Forma de Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
+                lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
+                barbeiro_venda = st.selectbox("Barbeiro que Atendeu:", lista_barbeiros_sistema)
+            with col_f2:
+                cliente = st.text_input("Nome do Cliente:", value="Avulso")
+            
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                if st.button("🚀 Fechar Comanda e Lançar", type="primary", use_container_width=True):
+                    # Criar linhas para salvar todas de uma vez
+                    novas_linhas = []
+                    data_atual = datetime.now().strftime("%Y-%m-%d")
+                    for item_c in st.session_state["carrinho_comanda"]:
+                        item_c["Data"] = data_atual
+                        item_c["Forma de Pagamento"] = forma_pagamento
+                        item_c["Barbeiro"] = barbeiro_venda
+                        item_c["Cliente"] = cliente
+                        novas_linhas.append(item_c)
+                    
+                    novas_vendas_df = pd.DataFrame(novas_linhas)
+                    vendas_df = pd.concat([vendas_df, novas_vendas_df], ignore_index=True)
+                    vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
+                    
+                    st.session_state["carrinho_comanda"] = [] # Limpa a comanda
+                    st.success(f"✅ COMANDA FECHADA! R$ {valor_total_comanda:.2f} lançados com sucesso!")
+                    time.sleep(1.5)
+                    st.rerun()
+            with col_b2:
+                if st.button("🗑️ Cancelar / Limpar tudo", type="secondary", use_container_width=True):
+                    st.session_state["carrinho_comanda"] = []
+                    st.toast("Comanda limpa.")
+                    st.rerun()
+        else:
+            st.info("A comanda está vazia. Adicione itens do lado esquerdo para começar!")
 
 # ---------------- MÓDULO 2: LANÇAR GASTO ----------------
 elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "admin":
@@ -167,7 +203,6 @@ elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "adm
             }])
             gastos_df = pd.concat([gastos_df, novo_gasto], ignore_index=True)
             gastos_df.to_csv(ARQUIVO_GASTOS, index=False, encoding='utf-8')
-            
             st.success(f"✅ Gasto '{descricao}' registrado com sucesso!")
             time.sleep(1.2)
             st.rerun()
@@ -175,7 +210,6 @@ elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "adm
 # ---------------- MÓDULO 3: GERENCIAR BARBEIROS ----------------
 elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin":
     st.header("Gerenciamento de Barbeiros da Equipe")
-    
     col_cad1, col_cad2 = st.columns(2)
     with col_cad1:
         st.subheader("➕ Adicionar Profissional")
@@ -187,28 +221,23 @@ elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin"
                 novo_b = pd.DataFrame([{"Nome": novo_nome, "Comissão (%)": nova_comissao}])
                 barbeiros_df = pd.concat([barbeiros_df, novo_b], ignore_index=True)
                 barbeiros_df.to_csv(ARQUIVO_BARBEIROS, index=False, encoding='utf-8')
-                
                 st.success(f"👤 Profissional '{novo_nome}' adicionado com sucesso!")
                 time.sleep(1.2)
                 st.rerun()
-            else:
-                st.error("Nome inválido ou barbeiro já cadastrado.")
                 
         st.markdown("---")
         st.subheader("❌ Remover Profissional")
         if not barbeiros_df.empty:
             barbeiro_remover = st.selectbox("Selecione o Barbeiro para Excluir:", barbeiros_df["Nome"].tolist())
-            if st.button("Remover do Sistema", type="secondary"):
+            if st.button("Remover do Sistema"):
                 barbeiros_df = barbeiros_df[barbeiros_df["Nome"] != barbeiro_remover]
                 barbeiros_df.to_csv(ARQUIVO_BARBEIROS, index=False, encoding='utf-8')
                 st.success(f"🗑️ Barbeiro '{barbeiro_remover}' foi excluído do sistema.")
                 time.sleep(1.2)
                 st.rerun()
-        else:
-            st.info("Nenhum barbeiro cadastrado.")
                 
     with col_cad2:
-        st.subheader("👥 Profissionais Ativos Atualmente")
+        st.subheader("👥 Profissionais Ativos")
         st.dataframe(barbeiros_df, use_container_width=True)
 
 # ---------------- MÓDULO 4: ESTOQUE & SERVIÇOS ----------------
@@ -223,23 +252,18 @@ elif menu == "📦 Estoque & Serviços":
     
     st.subheader("📦 Lista de Produtos e Comissões fixas")
     st.dataframe(produtos_calculados, use_container_width=True)
-    
     st.subheader("💈 Lista de Serviços Prestados")
     st.dataframe(servicos_df, use_container_width=True)
 
 # ---------------- MÓDULO 5: GERENCIAR CATÁLOGO ----------------
 elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "admin":
-    st.header("⚙️ Configurar Catálogo (Serviços e Produtos)")
+    st.header("⚙️ Configurar Catálogo")
     aba_serv, aba_prod = st.tabs(["💈 Serviços", "📦 Produtos"])
     
     with aba_serv:
         st.subheader("Adicionar Novo Serviço")
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            s_nome = st.text_input("Nome do Novo Serviço:")
-        with col_s2:
-            s_preco = st.number_input("Preço Cobrado (R$):", min_value=0.0, value=20.0, step=5.0)
-            
+        s_nome = st.text_input("Nome do Novo Serviço:")
+        s_preco = st.number_input("Preço Cobrado (R$):", min_value=0.0, value=20.0, step=5.0)
         if st.button("Adicionar Serviço"):
             if s_nome != "":
                 novo_id = int(servicos_df["ID"].max() + 1) if not servicos_df.empty else 1
@@ -249,12 +273,11 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
                 st.success(f"✨ Novo serviço '{s_nome}' incluído!")
                 time.sleep(1.2)
                 st.rerun()
-                
+
         st.markdown("---")
         st.subheader("Editar Preço de Serviço Existente")
         servico_editar = st.selectbox("Escolha o Serviço para Editar:", servicos_df["Nome do Serviço"].tolist())
         novo_preco_s = st.number_input("Novo Preço (R$):", min_value=0.0, value=float(servicos_df[servicos_df["Nome do Serviço"] == servico_editar]["Preço (R$)"].values[0]))
-        
         if st.button("Salvar Novo Preço"):
             servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
             servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
@@ -287,9 +310,8 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
                 st.rerun()
                 
         st.markdown("---")
-        st.subheader("Editar Produto e Comissão Existente")
+        st.subheader("Editar Produto Existente")
         prod_editar = st.selectbox("Escolha o Produto para Modificar:", produtos_df["Nome do Produto"].tolist())
-        
         col_ed1, col_ed2, col_ed3, col_ed4 = st.columns(4)
         item_linha = produtos_df[produtos_df["Nome do Produto"] == prod_editar]
         with col_ed1:
@@ -304,7 +326,7 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
         if st.button("Salvar Modificações do Produto"):
             produtos_df.loc[produtos_df["Nome do Produto"] == prod_editar, ["Preço de Venda", "Preço de Custo", "Estoque Inicial", "Comissão Barbeiro (R$)"]] = [ed_venda, ed_custo, ed_estoque, ed_comis]
             produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
-            st.success("¼ Produto e Valor de Comissão atualizados com sucesso!")
+            st.success("🔥 Produto e Valor de Comissão atualizados!")
             time.sleep(1.2)
             st.rerun()
 
@@ -337,13 +359,11 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
             porcentagem_servico = b["Comissão (%)"]
             vendas_do_barbeiro = vendas_df[vendas_df["Barbeiro"] == nome_b]
             
-            # 1. Serviços
             servicos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Serviço"]
             faturamento_servicos = servicos_b["Valor Total"].sum()
             total_cortes = servicos_b["Quantidade"].sum()
             valor_comissao_servico = faturamento_servicos * (porcentagem_servico / 100.0)
             
-            # 2. Produtos
             produtos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Produto"]
             valor_comissao_produto = 0.0
             total_produtos_vendidos = produtos_b["Quantidade"].sum()
@@ -390,8 +410,6 @@ elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "adm
 # ---------------- MÓDULO 7: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações" and st.session_state["perfil"] == "admin":
     st.header("Configurações Globais")
-    st.warning("Ações de Limpeza de Dados (Não podem ser desfeitas!)")
-    
     if st.button("⚠️ Limpar Histórico de Vendas", type="primary"):
         pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"]).to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
         st.success("Histórico zerado!")
