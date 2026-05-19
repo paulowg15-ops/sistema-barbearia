@@ -26,12 +26,13 @@ def inicializar_banco_de_dados():
         ]).to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
 
     if not os.path.exists(ARQUIVO_PRODUTOS):
+        # Adicionada a coluna 'Comissão Barbeiro (R$)' com valor padrão de 0.0
         pd.DataFrame([
-            {"ID": 1, "Nome do Produto": "Pomada Modeladora", "Preço de Venda": 40.0, "Preço de Custo": 20.0, "Estoque Inicial": 10},
-            {"ID": 2, "Nome do Produto": "Cerveja Long Neck", "Preço de Venda": 8.0, "Preço de Custo": 4.0, "Estoque Inicial": 24},
-            {"ID": 3, "Nome do Produto": "Refrigerante Lata", "Preço de Venda": 5.0, "Preço de Custo": 2.5, "Estoque Inicial": 24},
-            {"ID": 4, "Nome do Produto": "Água Mineral", "Preço de Venda": 3.0, "Preço de Custo": 1.0, "Estoque Inicial": 10},
-            {"ID": 5, "Nome do Produto": "Óleo para Barba", "Preço de Venda": 35.0, "Preço de Custo": 18.0, "Estoque Inicial": 5}
+            {"ID": 1, "Nome do Produto": "Pomada Modeladora", "Preço de Venda": 40.0, "Preço de Custo": 20.0, "Estoque Inicial": 10, "Comissão Barbeiro (R$)": 5.0},
+            {"ID": 2, "Nome do Produto": "Cerveja Long Neck", "Preço de Venda": 8.0, "Preço de Custo": 4.0, "Estoque Inicial": 24, "Comissão Barbeiro (R$)": 0.0},
+            {"ID": 3, "Nome do Produto": "Refrigerante Lata", "Preço de Venda": 5.0, "Preço de Custo": 2.5, "Estoque Inicial": 24, "Comissão Barbeiro (R$)": 0.0},
+            {"ID": 4, "Nome do Produto": "Água Mineral", "Preço de Venda": 3.0, "Preço de Custo": 1.0, "Estoque Inicial": 10, "Comissão Barbeiro (R$)": 0.0},
+            {"ID": 5, "Nome do Produto": "Óleo para Barba", "Preço de Venda": 35.0, "Preço de Custo": 18.0, "Estoque Inicial": 5, "Comissão Barbeiro (R$)": 3.0}
         ]).to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
 
     if not os.path.exists(ARQUIVO_VENDAS):
@@ -50,6 +51,10 @@ inicializar_banco_de_dados()
 # Carregar os dados atuais
 servicos_df = pd.read_csv(ARQUIVO_SERVICOS, encoding='utf-8')
 produtos_df = pd.read_csv(ARQUIVO_PRODUTOS, encoding='utf-8')
+# Garantir que a coluna de comissão exista caso o arquivo já tenha sido criado antes
+if "Comissão Barbeiro (R$)" not in produtos_df.columns:
+    produtos_df["Comissão Barbeiro (R$)"] = 0.0
+
 vendas_df = pd.read_csv(ARQUIVO_VENDAS, encoding='utf-8')
 gastos_df = pd.read_csv(ARQUIVO_GASTOS, encoding='utf-8')
 barbeiros_df = pd.read_csv(ARQUIVO_BARBEIROS, encoding='utf-8')
@@ -63,12 +68,10 @@ if "perfil" not in st.session_state:
 if not st.session_state["autenticado"]:
     st.title("💈 Acesso ao Sistema - Barbearia")
     st.markdown("---")
-    
     col_login, _ = st.columns([1, 2])
     with col_login:
         usuario = st.text_input("Usuário:")
         senha = st.text_input("Senha:", type="password")
-        
         if st.button("Entrar", type="primary"):
             if usuario == "admin" and senha == "barba123":
                 st.session_state["autenticado"] = True
@@ -100,11 +103,9 @@ if st.sidebar.button("🚪 Sair do Sistema"):
 # ---------------- MÓDULO 1: LANÇAR VENDA ----------------
 if menu == "💸 Lançar Venda":
     st.header("Registrar Atendimento / Venda")
-    
     col1, col2 = st.columns(2)
     with col1:
         tipo = st.selectbox("Tipo de Venda:", ["Serviço (Corte/Barba)", "Produto (Bebida/Pomada)"])
-        
         if tipo == "Serviço (Corte/Barba)":
             lista_itens = servicos_df["Nome do Serviço"].tolist()
             tabela_ref = servicos_df
@@ -144,15 +145,13 @@ if menu == "💸 Lançar Venda":
         vendas_df = pd.concat([vendas_df, nova_venda], ignore_index=True)
         vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
         
-        # TELA DE CONFIRMAÇÃO VISUAL 
-        st.success(f"✅ SUCESSO! {categoria_venda} '{item_selecionado}' lançado corretamente no caixa!")
-        time.sleep(1.5)
+        st.success(f"✅ SUCESSO! {categoria_venda} '{item_selecionado}' lançado por {barbeiro_venda}!")
+        time.sleep(1.2)
         st.rerun()
 
 # ---------------- MÓDULO 2: LANÇAR GASTO ----------------
 elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "admin":
     st.header("Registrar Saída de Caixa / Gastos")
-    
     col1, col2 = st.columns(2)
     with col1:
         descricao = st.text_input("Descrição do Gasto:")
@@ -171,18 +170,17 @@ elif menu == "📉 Lançar Gasto/Despesa" and st.session_state["perfil"] == "adm
             gastos_df = pd.concat([gastos_df, novo_gasto], ignore_index=True)
             gastos_df.to_csv(ARQUIVO_GASTOS, index=False, encoding='utf-8')
             
-            st.success(f"✅ Gasto '{descricao}' registrado e subtraído do lucro real!")
-            time.sleep(1.5)
+            st.success(f"✅ Gasto '{descricao}' registrado com sucesso!")
+            time.sleep(1.2)
             st.rerun()
-        else:
-            st.error("Preencha a descrição e o valor corretamente.")
 
-# ---------------- MÓDULO 3: CADASTRAR BARBEIRO ----------------
+# ---------------- MÓDULO 3: GERENCIAR BARBEIROS (CADASTRO E EXCLUSÃO) ----------------
 elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin":
     st.header("Gerenciamento de Barbeiros da Equipe")
     
     col_cad1, col_cad2 = st.columns(2)
     with col_cad1:
+        st.subheader("➕ Adicionar Profissional")
         novo_nome = st.text_input("Nome do Profissional:")
         nova_comissao = st.number_input("Porcentagem de Comissão nos Serviços (%):", min_value=0.0, max_value=100.0, value=50.0, step=5.0)
         
@@ -192,14 +190,27 @@ elif menu == "👥 Cadastrar Barbeiro" and st.session_state["perfil"] == "admin"
                 barbeiros_df = pd.concat([barbeiros_df, novo_b], ignore_index=True)
                 barbeiros_df.to_csv(ARQUIVO_BARBEIROS, index=False, encoding='utf-8')
                 
-                st.success(f"👤 Profissional '{novo_nome}' adicionado à equipe!")
-                time.sleep(1.5)
+                st.success(f"👤 Profissional '{novo_nome}' adicionado com sucesso!")
+                time.sleep(1.2)
                 st.rerun()
             else:
                 st.error("Nome inválido ou barbeiro já cadastrado.")
                 
+        st.markdown("---")
+        st.subheader("❌ Remover Profissional")
+        if not barbeiros_df.empty:
+            barbeiro_remover = st.selectbox("Selecione o Barbeiro para Excluir:", barbeiros_df["Nome"].tolist())
+            if st.button("Remover do Sistema", type="secondary"):
+                barbeiros_df = barbeiros_df[barbeiros_df["Nome"] != barbeiro_remover]
+                barbeiros_df.to_csv(ARQUIVO_BARBEIROS, index=False, encoding='utf-8')
+                st.success(f"🗑️ Barbeiro '{barbeiro_remover}' foi excluído do sistema.")
+                time.sleep(1.2)
+                st.rerun()
+        else:
+            st.info("Nenhum barbeiro cadastrado.")
+                
     with col_cad2:
-        st.subheader("Profissionais Ativos")
+        st.subheader("👥 Profissionais Ativos Atualmente")
         st.dataframe(barbeiros_df, use_container_width=True)
 
 # ---------------- MÓDULO 4: ESTOQUE & SERVIÇOS ----------------
@@ -212,23 +223,22 @@ elif menu == "📦 Estoque & Serviços":
     produtos_calculados["Quantidade Vendida"] = produtos_calculados["Nome do Produto"].map(qtd_vendida_map).fillna(0).astype(int)
     produtos_calculados["Estoque Atual"] = produtos_calculados["Estoque Inicial"] - produtos_calculados["Quantidade Vendida"]
     
-    st.subheader("📦 Lista de Produtos")
+    st.subheader("📦 Lista de Produtos e Comissões fixas")
     st.dataframe(produtos_calculados, use_container_width=True)
     
     st.subheader("💈 Lista de Serviços Prestados")
     st.dataframe(servicos_df, use_container_width=True)
 
-# ---------------- MÓDULO 5: GERENCIAR CATÁLOGO ----------------
+# ---------------- MÓDULO 5: GERENCIAR CATÁLOGO (PREÇOS E COMISSÃO DE PRODUTOS) ----------------
 elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "admin":
-    st.header("⚙️ Gerenciar e Configurar Catálogo (Serviços e Produtos)")
-    
+    st.header("⚙️ Configurar Catálogo (Serviços e Produtos)")
     aba_serv, aba_prod = st.tabs(["💈 Serviços", "📦 Produtos"])
     
     with aba_serv:
         st.subheader("Adicionar Novo Serviço")
         col_s1, col_s2 = st.columns(2)
         with col_s1:
-            s_nome = st.text_input("Nome do Novo Serviço (Ex: Sobrancelha):")
+            s_nome = st.text_input("Nome do Novo Serviço:")
         with col_s2:
             s_preco = st.number_input("Preço Cobrado (R$):", min_value=0.0, value=20.0, step=5.0)
             
@@ -238,134 +248,56 @@ elif menu == "⚙️ Gerenciar Catálogo" and st.session_state["perfil"] == "adm
                 novo_s = pd.DataFrame([{"ID": novo_id, "Nome do Serviço": s_nome, "Preço (R$)": s_preco}])
                 servicos_df = pd.concat([servicos_df, novo_s], ignore_index=True)
                 servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-                
-                st.success(f"✨ Novo serviço '{s_nome}' criado com sucesso!")
-                time.sleep(1.5)
+                st.success(f"✨ Novo serviço '{s_nome}' incluído!")
+                time.sleep(1.2)
                 st.rerun()
                 
         st.markdown("---")
-        st.subheader("Editar Preços Existentes")
+        st.subheader("Editar Preço de Serviço Existente")
         servico_editar = st.selectbox("Escolha o Serviço para Editar:", servicos_df["Nome do Serviço"].tolist())
         novo_preco_s = st.number_input("Novo Preço (R$):", min_value=0.0, value=float(servicos_df[servicos_df["Nome do Serviço"] == servico_editar]["Preço (R$)"].values[0]))
         
         if st.button("Salvar Novo Preço"):
             servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
             servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-            
-            st.success("🎉 Preço alterado e atualizado no catálogo!")
-            time.sleep(1.5)
+            st.success("🎉 Preço atualizado com sucesso!")
+            time.sleep(1.2)
             st.rerun()
 
     with aba_prod:
         st.subheader("Adicionar Novo Produto / Bebida")
-        col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+        col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns(5)
         with col_p1:
             p_nome = st.text_input("Nome do Produto:")
         with col_p2:
-            p_venda = st.number_input("Preço de Venda (R$):", min_value=0.0, value=10.0)
+            p_venda = st.number_input("Preço Venda (R$):", min_value=0.0, value=10.0)
         with col_p3:
-            p_custo = st.number_input("Preço de Custo (R$):", min_value=0.0, value=5.0)
+            p_custo = st.number_input("Preço Custo (R$):", min_value=0.0, value=5.0)
         with col_p4:
-            p_estoque = st.number_input("Estoque Inicial:", min_value=0, value=10, step=1)
+            p_estoque = st.number_input("Estoque Inicial:", min_value=0, value=10)
+        with col_p5:
+            p_comis = st.number_input("Comissão do Barbeiro (R$):", min_value=0.0, value=0.0, description="Valor fixo por venda")
             
         if st.button("Adicionar Produto"):
             if p_nome != "":
                 novo_id = int(produtos_df["ID"].max() + 1) if not produtos_df.empty else 1
-                novo_p = pd.DataFrame([{"ID": novo_id, "Nome do Produto": p_nome, "Preço de Venda": p_venda, "Preço de Custo": p_custo, "Estoque Inicial": p_estoque}])
+                novo_p = pd.DataFrame([{"ID": novo_id, "Nome do Produto": p_nome, "Preço de Venda": p_venda, "Preço de Custo": p_custo, "Estoque Inicial": p_estoque, "Comissão Barbeiro (R$)": p_comis}])
                 produtos_df = pd.concat([produtos_df, novo_p], ignore_index=True)
                 produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
-                
-                st.success(f"📦 Produto '{p_nome}' cadastrado nas prateleiras!")
-                time.sleep(1.5)
+                st.success(f"📦 Produto '{p_nome}' cadastrado!")
+                time.sleep(1.2)
                 st.rerun()
                 
         st.markdown("---")
-        st.subheader("Editar Estoque / Preço de Produto Existente")
+        st.subheader("Editar Produto e Comissão Existente")
         prod_editar = st.selectbox("Escolha o Produto para Modificar:", produtos_df["Nome do Produto"].tolist())
         
-        col_ed1, col_ed2, col_ed3 = st.columns(3)
+        col_ed1, col_ed2, col_ed3, col_ed4 = st.columns(4)
         item_linha = produtos_df[produtos_df["Nome do Produto"] == prod_editar]
         with col_ed1:
             ed_venda = st.number_input("Mudar Preço Venda:", value=float(item_linha["Preço de Venda"].values[0]))
         with col_ed2:
             ed_custo = st.number_input("Mudar Preço Custo:", value=float(item_linha["Preço de Custo"].values[0]))
         with col_ed3:
-            ed_estoque = st.number_input("Mudar Estoque Inicial Total:", value=int(item_linha["Estoque Inicial"].values[0]))
-            
-        if st.button("Salvar Modificações do Produto"):
-            produtos_df.loc[produtos_df["Nome do Produto"] == prod_editar, ["Preço de Venda", "Preço de Custo", "Estoque Inicial"]] = [ed_venda, ed_custo, ed_estoque]
-            produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
-            
-            st.success("🔥 Informações do produto atualizadas com sucesso!")
-            time.sleep(1.5)
-            st.rerun()
-
-# ---------------- MÓDULO 6: PAINEL DE RELATÓRIOS ----------------
-elif menu == "📊 Painel de Relatórios" and st.session_state["perfil"] == "admin":
-    st.header("Painel Estatístico, Financeiro e Comissões")
-    
-    vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
-    vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
-    gastos_df["Valor (R$)"] = pd.to_numeric(gastos_df["Valor (R$)"], errors='coerce').fillna(0)
-    
-    faturamento = vendas_df["Valor Total"].sum()
-    total_gastos = gastos_df["Valor (R$)"].sum()
-    lucro_liquido = faturamento - total_gastos
-    
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Faturamento Bruto", f"R$ {faturamento:.2f}")
-    col2.metric("Total de Gastos", f"R$ {total_gastos:.2f}", delta=f"-R$ {total_gastos:.2f}", delta_color="inverse")
-    col3.metric("Lucro Líquido Real", f"R$ {lucro_liquido:.2f}")
-    
-    st.markdown("---")
-    st.subheader("💸 Relatório de Comissões por Barbeiro (Apenas Serviços)")
-    
-    if not vendas_df.empty and not barbeiros_df.empty:
-        servicos_realizados = vendas_df[vendas_df["Tipo"] == "Serviço"]
-        relatorio_comissao = []
-        for _, b in barbeiros_df.iterrows():
-            nome_b = b["Nome"]
-            porcentagem_b = b["Comissão (%)"]
-            vendas_do_barbeiro = servicos_realizados[servicos_realizados["Barbeiro"] == nome_b]
-            total_arrecadado = vendas_do_barbeiro["Valor Total"].sum()
-            total_cortes = vendas_do_barbeiro["Quantidade"].sum()
-            valor_comissao = total_arrecadado * (porcentagem_b / 100.0)
-            
-            relatorio_comissao.append({
-                "Barbeiro": nome_b,
-                "Total de Serviços Realizados": int(total_cortes),
-                "Faturamento em Serviços (R$)": total_arrecadado,
-                "Sua Comissão (%)": f"{porcentagem_b}%",
-                "Valor a Pagar (R$)": valor_comissao
-            })
-        st.dataframe(pd.DataFrame(relatorio_comissao), use_container_width=True)
-    else:
-        st.info("Nenhum serviço registrado para calcular comissões.")
-        
-    st.markdown("---")
-    col_g1, col_g2 = st.columns(2)
-    with col_g1:
-        st.subheader("📅 Faturamento Diário")
-        if not vendas_df.empty:
-            st.line_chart(vendas_df.groupby("Data")["Valor Total"].sum())
-    with col_g2:
-        st.subheader("💰 Divisão de Receitas")
-        if not vendas_df.empty:
-            st.bar_chart(vendas_df.groupby("Tipo")["Valor Total"].sum())
-
-    st.markdown("---")
-    tab1, tab2 = st.tabs(["📋 Histórico de Vendas", "📉 Histórico de Gastos"])
-    with tab1:
-        st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True)
-    with tab2:
-        st.dataframe(gastos_df.sort_index(ascending=False), use_container_width=True)
-
-# ---------------- MÓDULO 7: CONFIGURAÇÕES ----------------
-elif menu == "⚙️ Configurações" and st.session_state["perfil"] == "admin":
-    st.header("Configurações Globais")
-    st.warning("Ações de Limpeza de Dados (Não podem ser desfeitas!)")
-    
-    if st.button("⚠️ Limpar Histórico de Vendas", type="primary"):
-        pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"]).to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
-        st.success("Histórico zerado!")
-        st.rerun()
+            ed_estoque = st.number_input("Mudar Estoque Inicial:", value=int(item_
+                                                                             
