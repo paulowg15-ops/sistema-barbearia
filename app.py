@@ -20,6 +20,7 @@ ARQUIVO_PRESENCAS = "presencas.csv"
 ARQUIVO_USUARIOS = "usuarios.csv"
 ARQUIVO_SESSAO = "sessao_ativa.csv"
 ARQUIVO_CONSUMO_INTERNO = "consumo_interno.csv"
+ARQUIVO_FECHAMENTOS = "fechamentos.csv" # Novo arquivo de auditoria diária
 
 # Lista oficial com todos os arquivos operacionais do sistema para o ZIP
 TODOS_ARQUIVOS_BACKUP = {
@@ -29,7 +30,8 @@ TODOS_ARQUIVOS_BACKUP = {
     "assinaturas.csv": ARQUIVO_ASSINATURAS,
     "presencas.csv": ARQUIVO_PRESENCAS,
     "consumo_interno.csv": ARQUIVO_CONSUMO_INTERNO,
-    "usuarios.csv": ARQUIVO_USUARIOS
+    "usuarios.csv": ARQUIVO_USUARIOS,
+    "fechamentos.csv": ARQUIVO_FECHAMENTOS
 }
 
 def inicializar_banco_de_dados():
@@ -57,6 +59,8 @@ def inicializar_banco_de_dados():
                 pd.DataFrame([{"Usuario": "admin", "Senha": "barba123", "Permissoes": "TODAS"}]).to_csv(arquivo, index=False, encoding='utf-8')
             elif arquivo == ARQUIVO_BARBEIROS:
                 pd.DataFrame([{"Nome": "G.", "Comissão (%)": 50.0}]).to_csv(arquivo, index=False, encoding='utf-8')
+            elif arquivo == ARQUIVO_FECHAMENTOS:
+                pd.DataFrame(columns=["Data", "Usuario", "Dinheiro Real", "Pix Real", "Cartao Real", "Total Real", "Total Sistema", "Diferenca", "Status", "Observacoes"]).to_csv(arquivo, index=False, encoding='utf-8')
             else:
                 pd.DataFrame().to_csv(arquivo, index=False, encoding='utf-8')
 
@@ -69,7 +73,7 @@ inicializar_banco_de_dados()
 usuarios_df = pd.read_csv(ARQUIVO_USUARIOS, encoding='utf-8')
 
 # --- LISTA MESTRE OFICIAL DE PERMISSÕES ---
-PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "💾 Backup do Sistema", "⚙️ Configurações"]
+PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "🔒 Fechamento de Dia", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "💾 Backup do Sistema", "⚙️ Configurações"]
 PERMISSOES_PADRAO = ["💸 Abrir Comanda (Vendas)", "📦 Estoque & Serviços"]
 
 # --- CONTROLE DE SESSÃO ---
@@ -149,6 +153,7 @@ barbeiros_df = pd.read_csv(ARQUIVO_BARBEIROS, encoding='utf-8').dropna(how='all'
 assinaturas_df = pd.read_csv(ARQUIVO_ASSINATURAS, encoding='utf-8').dropna(how='all')
 presencas_df = pd.read_csv(ARQUIVO_PRESENCAS, encoding='utf-8').dropna(how='all')
 consumo_interno_df = pd.read_csv(ARQUIVO_CONSUMO_INTERNO, encoding='utf-8').dropna(how='all')
+fechamentos_df = pd.read_csv(ARQUIVO_FECHAMENTOS, encoding='utf-8').dropna(how='all')
 
 # --- CONFIGURAÇÃO DA BARRA LATERAL ---
 st.sidebar.title("✂️ O Chefão")
@@ -342,7 +347,73 @@ elif menu == "✏️ Corrigir Lançamentos":
                     time.sleep(1.2)
                     st.rerun()
 
-# ---------------- MÓDULO 5: GERENCIAR BARBEIROS ----------------
+# ---------------- MÓDULO 5: FECHAMENTO DE DIA (NOVO TOTALMENTE COMPLETO) ----------------
+elif menu == "🔒 Fechamento de Dia":
+    st.header("🔒 Fechamento de Caixa Diário - Auditoria")
+    st.write("O gerente deve contar o dinheiro vivo do caixa físico no final do expediente e preencher abaixo.")
+    
+    tab_f_1, tab_f_2 = st.tabs(["📝 Realizar Fechamento de Hoje", "📋 Histórico de Auditoria"])
+    
+    data_hoje_f = datetime.now().strftime("%Y-%m-%d")
+    
+    with tab_f_1:
+        # Calcular o que o sistema "acha" que entrou hoje
+        vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
+        vendas_hoje = vendas_df[vendas_df["Data"] == data_hoje_f]
+        total_sistema_hoje = vendas_hoje["Valor Total"].sum()
+        
+        col_fe1, col_fe2 = st.columns(2, gap="large")
+        
+        with col_fe1:
+            with st.container(border=True):
+                st.subheader("📊 Valores Contados na Gaveta")
+                real_dinheiro = st.number_input("Total em Dinheiro Físico (R$):", min_value=0.0, step=5.0)
+                real_pix = st.number_input("Total recebido no Pix (R$):", min_value=0.0, step=5.0)
+                real_cartao = st.number_input("Total em Cartões (Crédito/Débito) (R$):", min_value=0.0, step=5.0)
+                
+                obs_fechamento = st.text_area("Justificativa / Observações do Fechamento:", placeholder="Ex: Caixa bateu / Faltou troco de R$ 2,00 na comanda avulso...")
+                
+                total_real_calculado = real_dinheiro + real_pix + real_cartao
+                diferenca_caixa = total_real_calculado - total_sistema_hoje
+                
+                if diferenca_caixa == 0: status_caixa = "🟢 Bateu Perfeitamente"
+                elif diferenca_caixa > 0: status_caixa = f"🔵 Sobrou R$ {diferenca_caixa:.2f}"
+                else: status_caixa = f"🔴 Quebra de Caixa (Faltou R$ {abs(diferenca_caixa):.2f})"
+                
+                if st.button("🔒 Confirmar e Encerrar Caixa de Hoje", type="primary", use_container_width=True):
+                    novo_f_df = pd.DataFrame([{
+                        "Data": data_hoje_f,
+                        "Usuario": st.session_state["perfil"],
+                        "Dinheiro Real": real_dinheiro,
+                        "Pix Real": real_pix,
+                        "Cartao Real": real_cartao,
+                        "Total Real": total_real_calculado,
+                        "Total Sistema": total_sistema_hoje,
+                        "Diferenca": diferenca_caixa,
+                        "Status": status_caixa,
+                        "Observacoes": obs_fechamento
+                    }])
+                    fechamentos_df = pd.concat([fechamentos_df, novo_f_df], ignore_index=True)
+                    fechamentos_df.to_csv(ARQUIVO_FECHAMENTOS, index=False, encoding='utf-8')
+                    st.success("🔒 Caixa fechado e registrado com sucesso para auditoria!")
+                    time.sleep(1.2)
+                    st.rerun()
+                    
+        with col_fe2:
+            with st.container(border=True):
+                st.subheader("⚖️ Comparativo em Tempo Real")
+                st.metric("📱 Total Esperado pelo Sistema", f"R$ {total_sistema_hoje:.2f}")
+                st.metric("💵 Total Real Contado", f"R$ {total_real_calculado:.2f}")
+                st.metric("📊 Status do Fechamento", status_caixa)
+
+    with tab_f_2:
+        st.subheader("📋 Relatório Geral de Fechamentos Anteriores")
+        if not fechamentos_df.empty:
+            st.dataframe(fechamentos_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum fechamento diário foi gravado ainda.")
+
+# ---------------- MÓDULO 6: GERENCIAR BARBEIROS ----------------
 elif menu == "👥 Cadastrar Barbeiro":
     st.header("👥 Gestão de Barbeiros da Equipe")
     col_cad1, col_cad2 = st.columns(2, gap="large")
@@ -372,7 +443,7 @@ elif menu == "👥 Cadastrar Barbeiro":
     with col_cad2:
         st.dataframe(barbeiros_df, use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 6: ESTOQUE & SERVIÇOS ----------------
+# ---------------- MÓDULO 7: ESTOQUE & SERVIÇOS ----------------
 elif menu == "📦 Estoque & Serviços":
     st.header("📦 Monitor do Estoque e Serviços")
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
@@ -385,7 +456,7 @@ elif menu == "📦 Estoque & Serviços":
     produtos_calculados["Estoque Atual"] = produtos_calculados["Estoque Inicial"] - produtos_calculados["Quantidade Vendida"] - produtos_calculados["Consumo Staff"]
     st.dataframe(produtos_calculados, use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 7: GERENCIAR CATÁLOGO (ATUALIZADO E FIXADO) ----------------
+# ---------------- MÓDULO 8: GERENCIAR CATÁLOGO ----------------
 elif menu == "⚙️ Gerenciar Catálogo":
     st.header("⚙️ Modificação de Catálogo e Preços")
     aba_serv, aba_prod = st.tabs(["💈 Serviços", "📦 Produtos/Bebidas"])
@@ -483,7 +554,7 @@ elif menu == "⚙️ Gerenciar Catálogo":
             st.subheader("📋 Produtos Atuais Cadastrados")
             st.dataframe(produtos_df, use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 8: GERENCIAR USUÁRIOS, PERMISSÕES E EDITAR ----------------
+# ---------------- MÓDULO 9: GERENCIAR USUÁRIOS, PERMISSÕES E EDITAR ----------------
 elif menu == "👤 Gerenciar Usuários":
     st.header("👤 Gerenciamento de Usuários e Níveis de Acesso")
     tab_usr1, tab_usr2 = st.tabs(["➕ Criar Novo Perfil", "✏️ Editar ou Resetar Perfil Existente"])
@@ -500,6 +571,7 @@ elif menu == "👤 Gerenciar Usuários":
                 p_clube = st.checkbox("💳 Clube de Assinaturas", key="chk_cl_1")
                 p_gastos = st.checkbox("📉 Lançar Gasto/Despesa", key="chk_g_1")
                 p_correcao = st.checkbox("✏️ Corrigir Lançamentos", key="chk_cor_1")
+                p_fechamento = st.checkbox("🔒 Fechamento de Dia", key="chk_f_1")
                 p_barbeiro = st.checkbox("👥 Cadastrar Barbeiro", key="chk_b_1")
                 p_estoque = st.checkbox("📦 Estoque & Serviços", value=True, key="chk_e_1")
                 p_catalogo = st.checkbox("⚙️ Gerenciar Catálogo", key="chk_cat_1")
@@ -516,6 +588,7 @@ elif menu == "👤 Gerenciar Usuários":
                             if p_clube: lista_p.append("💳 Clube de Assinaturas")
                             if p_gastos: lista_p.append("📉 Lançar Gasto/Despesa")
                             if p_correcao: lista_p.append("✏️ Corrigir Lançamentos")
+                            if p_fechamento: lista_p.append("🔒 Fechamento de Dia")
                             if p_barbeiro: lista_p.append("👥 Cadastrar Barbeiro")
                             if p_estoque: lista_p.append("📦 Estoque & Serviços")
                             if p_catalogo: lista_p.append("⚙️ Gerenciar Catálogo")
@@ -556,6 +629,7 @@ elif menu == "👤 Gerenciar Usuários":
                     e_clube = st.checkbox("💳 Clube de Assinaturas", value=("💳 Clube de Assinaturas" in permissões_atuais), key="chk_cl_2")
                     e_gastos = st.checkbox("📉 Lançar Gasto/Despesa", value=("📉 Lançar Gasto/Despesa" in permissões_atuais), key="chk_g_2")
                     e_correcao = st.checkbox("✏️ Corrigir Lançamentos", value=("✏️ Corrigir Lançamentos" in permissões_atuais), key="chk_cor_2")
+                    e_fechamento = st.checkbox("🔒 Fechamento de Dia", value=("🔒 Fechamento de Dia" in permissões_atuais), key="chk_f_2")
                     e_barbeiro = st.checkbox("👥 Cadastrar Barbeiro", value=("👥 Cadastrar Barbeiro" in permissões_atuais), key="chk_b_2")
                     e_estoque = st.checkbox("📦 Estoque & Serviços", value=("📦 Estoque & Serviços" in permissões_atuais), key="chk_e_2")
                     e_catalogo = st.checkbox("⚙️ Gerenciar Catálogo", value=("⚙️ Gerenciar Catálogo" in permissões_atuais), key="chk_cat_2")
@@ -570,6 +644,7 @@ elif menu == "👤 Gerenciar Usuários":
                         if e_clube: lista_novas_p.append("💳 Clube de Assinaturas")
                         if e_gastos: lista_novas_p.append("📉 Lançar Gasto/Despesa")
                         if e_correcao: lista_novas_p.append("✏️ Corrigir Lançamentos")
+                        if e_fechamento: lista_novas_p.append("🔒 Fechamento de Dia")
                         if e_barbeiro: lista_novas_p.append("👥 Cadastrar Barbeiro")
                         if e_estoque: lista_novas_p.append("📦 Estoque & Serviços")
                         if e_catalogo: lista_novas_p.append("⚙️ Gerenciar Catálogo")
@@ -583,7 +658,7 @@ elif menu == "👤 Gerenciar Usuários":
                         usuarios_df.loc[usuarios_df["Usuario"] == usuario_selecionado, "Permissoes"] = nova_perm_str
                         usuarios_df.to_csv(ARQUIVO_USUARIOS, index=False, encoding='utf-8')
                         
-                        st.success(f" Informações e acessos de '{usuario_selecionado}' atualizados!")
+                        st.success("⚙️ Perfil atualizado!")
                         time.sleep(1.2)
                         st.rerun()
             with col_ed_u2:
@@ -596,9 +671,9 @@ elif menu == "👤 Gerenciar Usuários":
                         time.sleep(1.2)
                         st.rerun()
         else:
-            st.info("Nenhum usuário gerente ou barbeiro cadastrado para alteração no momento.")
+            st.info("Nenhum usuário cadastrado para alteração no momento.")
 
-# ---------------- MÓDULO 9: PAINEL DE RELATÓRIOS ----------------
+# ---------------- MÓDULO 10: PAINEL DE RELATÓRIOS ----------------
 elif menu == "📊 Painel de Relatórios":
     st.header("📊 Dashboard Financeiro - O Chefão")
     vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
@@ -676,13 +751,10 @@ elif menu == "📊 Painel de Relatórios":
     with tab_rel3:
         if not vendas_filtradas.empty: st.line_chart(vendas_filtradas.groupby("Data")["Valor Total"].sum())
 
-# ---------------- MÓDULO 10: TELA DE BACKUP UNIFICADO COMPLETO ----------------
+# ---------------- MÓDULO 11: TELA DE BACKUP UNIFICADO COMPLETO ----------------
 elif menu == "💾 Backup do Sistema" and st.session_state["perfil"] == "admin":
     st.header("💾 Sistema Unificado de Backup Completo (.ZIP)")
-    st.write("Baixe ou restaure as informações operacionais de **O Chefão** de uma só vez.")
-    
     aba_exp_zip, aba_imp_zip = st.tabs(["📥 1. Criar e Baixar Backup Total", "📤 2. Restaurar Sistema Completo"])
-    
     with aba_exp_zip:
         buffer_zip = io.BytesIO()
         with zipfile.ZipFile(buffer_zip, "w") as arquivo_zip:
@@ -690,14 +762,7 @@ elif menu == "💾 Backup do Sistema" and st.session_state["perfil"] == "admin":
                 if os.path.exists(caminho_real):
                     arquivo_zip.write(caminho_real, arcname=nome_csv)
         buffer_zip.seek(0)
-        
-        st.download_button(
-            label="📥 Baixar Backup Completo (ZIP)",
-            data=buffer_zip,
-            file_name=f"backup_total_ochefao_{datetime.now().strftime('%Y%m%d')}.zip",
-            mime="application/zip",
-            use_container_width=True
-        )
+        st.download_button(label="📥 Baixar Backup Completo (ZIP)", data=buffer_zip, file_name=f"backup_total_ochefao_{datetime.now().strftime('%Y%m%d')}.zip", mime="application/zip", use_container_width=True)
 
     with aba_imp_zip:
         st.subheader("Suba o arquivo .ZIP de backup completo para restaurar tudo:")
@@ -714,15 +779,14 @@ elif menu == "💾 Backup do Sistema" and st.session_state["perfil"] == "admin":
                     st.success("🔥 SUCESSO ABSOLUTO! Sistema restaurado!")
                     time.sleep(1.5)
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Erro: {e}")
+                except Exception as e: st.error(f"Erro: {e}")
 
-# ---------------- MÓDULO 11: CONFIGURAÇÕES ----------------
+# ---------------- MÓDULO 12: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações":
     st.header("Configurações Globais")
     with st.container(border=True):
         if st.button("🚨 Zerar Clientes de Assinatura", type="primary", use_container_width=True):
-            pd.DataFrame(columns=["Cliente", "Plano", "Data Inicio", "Data Vencimento", "Valor Mensal"]).to_csv(ARQUIPO_ASSINATURAS, index=False, encoding='utf-8')
+            pd.DataFrame(columns=["Cliente", "Plano", "Data Inicio", "Data Vencimento", "Valor Mensal"]).to_csv(ARQUIVO_ASSINATURAS, index=False, encoding='utf-8')
             pd.DataFrame(columns=["Data", "Cliente", "Serviço Usado", "Barbeiro Atendeu"]).to_csv(ARQUIVO_PRESENCAS, index=False, encoding='utf-8')
             st.success("Clube resetado!")
             st.rerun()
