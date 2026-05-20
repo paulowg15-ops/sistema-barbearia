@@ -424,10 +424,8 @@ elif menu == "📦 Estoque & Serviços":
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
     produtos_calculados = produtos_df.copy()
     
-    # Calcular vendas externas
     qtd_vendida_map = vendas_df[vendas_df["Tipo"] == "Produto"].groupby("Item")["Quantidade"].sum().to_dict()
     
-    # Calcular também consumo interno para abater do estoque físico real
     consumo_interno_df["Quantidade"] = pd.to_numeric(consumo_interno_df["Quantidade"], errors='coerce').fillna(0)
     qtd_consumo_map = consumo_interno_df.groupby("Item")["Quantidade"].sum().to_dict()
     
@@ -469,7 +467,7 @@ elif menu == "⚙️ Gerenciar Catálogo":
             if st.button("Atualizar Valor", type="primary"):
                 servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
                 servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-                st.success("🎉 Preço atualizado!")
+                st.success("🎉 Preço updated!")
                 time.sleep(1.2)
                 st.rerun()
     with aba_prod:
@@ -570,32 +568,52 @@ elif menu == "👤 Gerenciar Usuários":
 elif menu == "📊 Painel de Relatórios":
     st.header("📊 Dashboard Financeiro - O Chefão")
     
+    # Garantir formatação numérica correta
     vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
     gastos_df["Valor (R$)"] = pd.to_numeric(gastos_df["Valor (R$)"], errors='coerce').fillna(0)
     consumo_interno_df["Valor Total"] = pd.to_numeric(consumo_interno_df["Valor Total"], errors='coerce').fillna(0)
     consumo_interno_df["Quantidade"] = pd.to_numeric(consumo_interno_df["Quantidade"], errors='coerce').fillna(0)
     
-    faturamento = vendas_df["Valor Total"].sum()
-    total_gastos = gastos_df["Valor (R$)"].sum()
-    lucro_liquido = faturamento - total_gastos
+    # Criar colunas de Ano-Mês para fazer a filtragem segura por data
+    vendas_df["Ano_Mes"] = vendas_df["Data"].str[:7]  # Retorna 'YYYY-MM'
+    gastos_df["Ano_Mes"] = gastos_df["Data"].str[:7]
     
+    # Montar lista de meses disponíveis no banco para o filtro dinâmico
+    meses_disponiveis = sorted(list(set(vendas_df["Ano_Mes"].dropna().tolist() + gastos_df["Ano_Mes"].dropna().tolist())), reverse=True)
+    mes_atual_string = datetime.now().strftime("%Y-%m")
+    if mes_atual_string not in meses_disponiveis:
+        meses_disponiveis.insert(0, mes_atual_string)
+        
+    # --- FILTRO DO MÊS PRINCIPAL ---
+    col_filtro, _ = st.columns([1, 3])
+    with col_filtro:
+        mes_selecionado = st.selectbox("📅 Selecione o Mês de Análise:", meses_disponiveis, index=0)
+    
+    # Filtrar os dataframes operacionais com base no mês do topo
+    vendas_filtradas = vendas_df[vendas_df["Ano_Mes"] == mes_selecionado]
+    gastos_filtrados = gastos_df[gastos_df["Ano_Mes"] == mes_selecionado]
+    
+    # Cálculos dos KPIs do mês
+    faturamento_mes = vendas_filtradas["Valor Total"].sum()
+    total_gastos_mes = gastos_filtrados["Valor (R$)"].sum()
+    lucro_liquido_mes = faturamento_mes - total_gastos_mes
+    
+    # Exibir métricas focadas no Mês
     c1, c2, c3 = st.columns(3)
-    with c1: st.metric("💰 FATURAMENTO BRUTO", f"R$ {faturamento:.2f}")
-    with c2: st.metric("📉 TOTAL DE GASTOS", f"R$ {total_gastos:.2f}")
-    with c3: st.metric("🔥 LUCRO LÍQUIDO REAL", f"R$ {lucro_liquido:.2f}")
+    with c1: st.metric(f"💰 FATURAMENTO BRUTO ({mes_selecionado})", f"R$ {faturamento_mes:.2f}")
+    with c2: st.metric(f"📉 TOTAL DE GASTOS ({mes_selecionado})", f"R$ {total_gastos_mes:.2f}")
+    with c3: st.metric(f"🔥 LUCRO LÍQUIDO REAL ({mes_selecionado})", f"R$ {lucro_liquido_mes:.2f}")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    tab_rel1, tab_rel2, tab_rel3 = st.tabs(["💸 Fechamento Semanal & Comissões", "🥤 Consumo Interno (Staff)", "📅 Históricos Completos"])
+    tab_rel1, tab_rel2, tab_rel3 = st.tabs(["💸 Fechamento Semanal & Comissões", "🥤 Consumo Interno (Staff)", "📅 Visão Mensal Expandida"])
     
     with tab_rel1:
-        st.subheader("💸 Tabela Unificada de Comissões com Desconto de Consumo")
+        st.subheader("💸 Tabela Unificada de Comissões (Acumulado em Aberto)")
         if not barbeiros_df.empty:
             relatorio_comissao = []
             mapa_comissao_produto = produtos_df.set_index("Nome do Produto")["Comissão Barbeiro (R$)"].to_dict()
-            
-            # Mapear consumo total acumulado para descontar por pessoa
             mapa_desconto_consumo = consumo_interno_df.groupby("Responsavel")["Valor Total"].sum().to_dict()
             
             for _, b in barbeiros_df.iterrows():
@@ -617,7 +635,6 @@ elif menu == "📊 Painel de Relatórios":
                     comissao_unitaria_p = mapa_comissao_produto.get(nome_p, 0.0)
                     valor_comissao_produto += float(comissao_unitaria_p) * float(qtd_p)
                 
-                # Calcular totais e descontos do consumo interno
                 total_ganho_bruto = valor_comissao_servico + valor_comissao_produto
                 valor_divida_consumo = float(mapa_desconto_consumo.get(nome_b, 0.0))
                 liquido_a_pagar_na_semana = total_ganho_bruto - valor_divida_consumo
@@ -633,7 +650,6 @@ elif menu == "📊 Painel de Relatórios":
                     "PAGAMENTO LÍQUIDO (A - B)": f"R$ {liquido_a_pagar_na_semana:.2f}"
                 })
             
-            # Adicionar o Gerente/Admin de forma avulsa para controle se houver consumo dele
             valor_divida_admin = float(mapa_desconto_consumo.get("admin", 0.0))
             if valor_divida_admin > 0:
                 relatorio_comissao.append({
@@ -644,33 +660,25 @@ elif menu == "📊 Painel de Relatórios":
                 })
                 
             st.dataframe(pd.DataFrame(relatorio_comissao), use_container_width=True, hide_index=True)
-            st.caption("ℹ️ O valor da 'Dívida Consumo' é atualizado em tempo real assim que novos produtos são retirados na aba de Consumo Interno.")
+            st.caption("ℹ️ Nota: A folha de pagamentos reflete o saldo total acumulado na semana para fechamento direto com a equipe.")
 
     with tab_rel2:
-        st.subheader("🥤 Lançamento de Consumo Interno (Barbeiros e Gerente)")
-        st.write("Use esta seção para registrar quando a própria equipe consumir água, refrigerantes ou outros produtos.")
-        
+        st.subheader("🥤 Lançamento de Consumo Interno (Staff)")
         col_con1, col_con2 = st.columns([1, 1], gap="large")
         with col_con1:
             with st.container(border=True):
                 st.subheader("📝 Registrar Nova Retirada")
-                
-                # Montar lista de pessoas que podem consumir (Barbeiros + Admin)
                 lista_staff = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else []
                 if "admin" not in lista_staff:
                     lista_staff.append("admin")
                     
                 quem_consumiu = st.selectbox("Quem consumiu o produto?", lista_staff)
-                
-                # Filtrar apenas produtos para consumo
                 lista_produtos_consumo = produtos_df["Nome do Produto"].tolist()
                 produto_retirado = st.selectbox("Selecione o Produto Retirado:", lista_produtos_consumo)
-                
                 qtd_retirada = st.number_input("Quantidade Retirada:", min_value=1, value=1, step=1)
                 
                 preco_venda_prod = produtos_df[produtos_df["Nome do Produto"] == produto_retirado]["Preço de Venda"].values[0]
                 total_retirada = float(preco_venda_prod) * qtd_retirada
-                
                 st.write(f"**Valor total a ser debitado:** R$ {total_retirada:.2f}")
                 
                 if st.button("💾 Gravar Consumo de Staff", type="primary", use_container_width=True):
@@ -688,7 +696,7 @@ elif menu == "📊 Painel de Relatórios":
                     st.rerun()
                     
         with col_con2:
-            st.subheader("📋 Extrato de Consumo do Staff Atual")
+            st.subheader("📋 Extrato de Consumo da Equipe")
             if not consumo_interno_df.empty:
                 st.dataframe(consumo_interno_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
                 if st.button("🧹 Zerar Consumos Internos (Pós-Pagamento)", use_container_width=True):
@@ -700,17 +708,27 @@ elif menu == "📊 Painel de Relatórios":
                 st.info("Nenhum consumo interno pendente nesta semana.")
 
     with tab_rel3:
+        st.subheader(f"📊 Análise de Movimentação Focada em: {mes_selecionado}")
         col_g1, col_g2 = st.columns(2, gap="large")
         with col_g1:
-            st.subheader("📅 Faturamento Diário")
-            if not vendas_df.empty: st.line_chart(vendas_df.groupby("Data")["Valor Total"].sum())
+            st.write("**📈 Gráfico de Faturamento Diário do Mês**")
+            if not vendas_filtradas.empty: 
+                st.line_chart(vendas_filtradas.groupby("Data")["Valor Total"].sum())
+            else:
+                st.info("Sem vendas registradas neste mês.")
         with col_g2:
-            st.subheader("💰 Divisão Balcão (Serviços vs Produtos)")
-            if not vendas_df.empty: st.bar_chart(vendas_df.groupby("Tipo")["Valor Total"].sum())
+            st.write("**💰 Faturamento por Categoria (Serviço vs Produto)**")
+            if not vendas_filtradas.empty: 
+                st.bar_chart(vendas_filtradas.groupby("Tipo")["Valor Total"].sum())
+            else:
+                st.info("Sem dados de faturamento.")
+                
         st.markdown("<br>", unsafe_allow_html=True)
-        tab1, tab2 = st.tabs(["📋 Histórico Completo de Vendas", "📉 Histórico de Gastos Gerais"])
-        with tab1: st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
-        with tab2: st.dataframe(gastos_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
+        tab_h1, tab_h2 = st.tabs([f"📋 Histórico de Vendas de {mes_selecionado}", f"📉 Histórico de Gastos de {mes_selecionado}"])
+        with tab_h1: 
+            st.dataframe(vendas_filtradas.drop(columns=["Ano_Mes"], errors='ignore').sort_index(ascending=False), use_container_width=True, hide_index=True)
+        with tab2: 
+            st.dataframe(gastos_filtrados.drop(columns=["Ano_Mes"], errors='ignore').sort_index(ascending=False), use_container_width=True, hide_index=True)
 
 # ---------------- MÓDULO 10: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações":
