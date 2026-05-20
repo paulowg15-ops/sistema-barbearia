@@ -385,47 +385,108 @@ elif menu == "📦 Estoque & Serviços":
     produtos_calculados["Estoque Atual"] = produtos_calculados["Estoque Inicial"] - produtos_calculados["Quantidade Vendida"] - produtos_calculados["Consumo Staff"]
     st.dataframe(produtos_calculados, use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 7: GERENCIAR CATÁLOGO ----------------
+# ---------------- MÓDULO 7: GERENCIAR CATÁLOGO (ATUALIZADO E FIXADO) ----------------
 elif menu == "⚙️ Gerenciar Catálogo":
     st.header("⚙️ Modificação de Catálogo e Preços")
     aba_serv, aba_prod = st.tabs(["💈 Serviços", "📦 Produtos/Bebidas"])
+    
     with aba_serv:
-        with st.container(border=True):
-            s_nome = st.text_input("Nome do Serviço:")
-            s_preco = st.number_input("Preço (R$):", min_value=0.0, value=20.0, step=5.0)
-            if st.button("Criar Serviço", type="primary"):
-                if s_nome != "":
-                    novo_id = int(servicos_df["ID"].max() + 1) if not servicos_df.empty else 1
-                    novo_s = pd.DataFrame([{"ID": novo_id, "Nome do Serviço": s_nome, "Preço (R$)": s_preco}])
-                    servicos_df = pd.concat([servicos_df, novo_s], ignore_index=True)
-                    servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-                    st.success("✨ Serviço criado!")
-                    time.sleep(1.2)
-                    st.rerun()
-    with aba_prod:
-        with st.container(border=True):
-            col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns(5)
-            with col_p1: p_nome = st.text_input("Nome do Produto:")
-            with col_p2: p_venda = st.number_input("Preço Venda:")
-            with col_p3: p_custo = st.number_input("Preço Custo:")
-            with col_p4: p_estoque = st.number_input("Estoque:", min_value=0, value=10)
-            with col_p5: p_comis = st.number_input("Comissão R$:")
-            if st.button("Salvar Produto", type="primary", use_container_width=True):
-                if p_nome != "":
-                    novo_id = int(produtos_df["ID"].max() + 1) if not produtos_df.empty else 1
-                    novo_p = pd.DataFrame([{"ID": novo_id, "Nome do Produto": p_nome, "Preço de Venda": p_venda, "Preço de Custo": p_custo, "Estoque Inicial": p_estoque, "Comissão Barbeiro (R$)": p_comis}])
-                    produtos_df = pd.concat([produtos_df, novo_p], ignore_index=True)
-                    produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
-                    st.success("📦 Inserido!")
-                    time.sleep(1.2)
-                    st.rerun()
+        col_s_1, col_s_2 = st.columns(2, gap="large")
+        with col_s_1:
+            with st.container(border=True):
+                st.subheader("Adicionar Novo Serviço")
+                s_nome = st.text_input("Nome do Serviço:")
+                s_preco = st.number_input("Preço (R$):", min_value=0.0, value=20.0, step=5.0)
+                if st.button("Criar Serviço", type="primary", use_container_width=True):
+                    if s_nome != "":
+                        novo_id = int(servicos_df["ID"].max() + 1) if not servicos_df.empty else 1
+                        novo_s = pd.DataFrame([{"ID": novo_id, "Nome do Serviço": s_nome, "Preço (R$)": s_preco}])
+                        servicos_df = pd.concat([servicos_df, novo_s], ignore_index=True)
+                        servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
+                        st.success("✨ Serviço criado!")
+                        time.sleep(1.2)
+                        st.rerun()
+                        
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.container(border=True):
+                st.subheader("Editar ou Excluir Serviço Existente")
+                servico_editar = st.selectbox("Escolha o Serviço:", servicos_df["Nome do Serviço"].tolist(), key="sb_edit_s")
+                novo_preco_s = st.number_input("Modificar Valor:", min_value=0.0, value=float(servicos_df[servicos_df["Nome do Serviço"] == servico_editar]["Preço (R$)"].values[0]), key="num_edit_s")
+                
+                c_btn_s1, c_btn_s2 = st.columns(2)
+                with c_btn_s1:
+                    if st.button("Atualizar Preço", type="primary", use_container_width=True):
+                        servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
+                        servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
+                        st.success("🎉 Preço atualizado!")
+                        time.sleep(1.2)
+                        st.rerun()
+                with c_btn_s2:
+                    if st.button("❌ Excluir Serviço", use_container_width=True):
+                        servicos_df = servicos_df[servicos_df["Nome do Serviço"] != servico_editar]
+                        servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
+                        st.success("🗑️ Serviço excluído do catálogo!")
+                        time.sleep(1.2)
+                        st.rerun()
+        with col_s_2:
+            st.subheader("📋 Serviços Cadastrados")
+            st.dataframe(servicos_df, use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 8: GERENCIAR USUÁRIOS, PERMISSÕES E EDITAR (ATUALIZADO) ----------------
+    with aba_prod:
+        col_p_1, col_p_2 = st.columns(2, gap="large")
+        with col_p_1:
+            with st.container(border=True):
+                st.subheader("Cadastrar Novo Produto")
+                col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns(5)
+                with col_p1: p_nome = st.text_input("Nome do Produto:")
+                with col_p2: p_venda = st.number_input("Preço Venda:")
+                with col_p3: p_custo = st.number_input("Preço Custo:")
+                with col_p4: p_estoque = st.number_input("Estoque:", min_value=0, value=10)
+                with col_p5: p_comis = st.number_input("Comissão R$:")
+                if st.button("Salvar Produto", type="primary", use_container_width=True):
+                    if p_nome != "":
+                        novo_id = int(produtos_df["ID"].max() + 1) if not produtos_df.empty else 1
+                        novo_p = pd.DataFrame([{"ID": novo_id, "Nome do Produto": p_nome, "Preço de Venda": p_venda, "Preço de Custo": p_custo, "Estoque Inicial": p_estoque, "Comissão Barbeiro (R$)": p_comis}])
+                        produtos_df = pd.concat([produtos_df, novo_p], ignore_index=True)
+                        produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
+                        st.success("📦 Produto inserido!")
+                        time.sleep(1.2)
+                        st.rerun()
+                        
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.container(border=True):
+                st.subheader("Editar ou Excluir Produto Existente")
+                prod_editar = st.selectbox("Selecione o Produto para Modificar/Excluir:", produtos_df["Nome do Produto"].tolist(), key="sb_edit_p")
+                col_ed1, col_ed2, col_ed3, col_ed4 = st.columns(4)
+                item_linha = produtos_df[produtos_df["Nome do Produto"] == prod_editar]
+                with col_ed1: ed_venda = st.number_input("Preço Venda:", value=float(item_linha["Preço de Venda"].values[0]), key="num_p_v")
+                with col_ed2: ed_custo = st.number_input("Preço Custo:", value=float(item_linha["Preço de Custo"].values[0]), key="num_p_c")
+                with col_ed3: ed_estoque = st.number_input("Estoque Inicial:", value=int(item_linha["Estoque Inicial"].values[0]), key="num_p_e")
+                with col_ed4: ed_comis = st.number_input("Comissão Fixa R$:", value=float(item_linha["Comissão Barbeiro (R$)"].values[0]), key="num_p_cm")
+                
+                c_btn_p1, c_btn_p2 = st.columns(2)
+                with c_btn_p1:
+                    if st.button("Salvar Modificações", type="primary", use_container_width=True):
+                        produtos_df.loc[produtos_df["Nome do Produto"] == prod_editar, ["Preço de Venda", "Preço de Custo", "Estoque Inicial", "Comissão Barbeiro (R$)"]] = [ed_venda, ed_custo, ed_estoque, ed_comis]
+                        produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
+                        st.success("🎉 Informações do produto atualizadas!")
+                        time.sleep(1.2)
+                        st.rerun()
+                with c_btn_p2:
+                    if st.button("❌ Excluir Produto", use_container_width=True):
+                        produtos_df = produtos_df[produtos_df["Nome do Produto"] != prod_editar]
+                        produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
+                        st.success("🗑️ Produto excluído permanentemente do catálogo!")
+                        time.sleep(1.2)
+                        st.rerun()
+        with col_p_2:
+            st.subheader("📋 Produtos Atuais Cadastrados")
+            st.dataframe(produtos_df, use_container_width=True, hide_index=True)
+
+# ---------------- MÓDULO 8: GERENCIAR USUÁRIOS, PERMISSÕES E EDITAR ----------------
 elif menu == "👤 Gerenciar Usuários":
     st.header("👤 Gerenciamento de Usuários e Níveis de Acesso")
-    
     tab_usr1, tab_usr2 = st.tabs(["➕ Criar Novo Perfil", "✏️ Editar ou Resetar Perfil Existente"])
-    
     with tab_usr1:
         col_u1, col_u2 = st.columns(2, gap="large")
         with col_u1:
@@ -476,14 +537,11 @@ elif menu == "👤 Gerenciar Usuários":
             st.dataframe(usuarios_df[["Usuario", "Permissoes"]], use_container_width=True, hide_index=True)
 
     with tab_usr2:
-        # ÁREA NOVA: EDITAR ACESSOS E RESETAR SENHA
         st.subheader("✏️ Alterar Acessos e Modificar Senhas")
         lista_usuarios_editaveis = [u for u in usuarios_df["Usuario"].tolist() if u.lower() != "admin"]
         
         if lista_usuarios_editaveis:
             usuario_selecionado = st.selectbox("Selecione qual usuário deseja editar:", lista_usuarios_editaveis)
-            
-            # Puxar dados atuais desse usuário específico
             linha_user = usuarios_df[usuarios_df["Usuario"] == usuario_selecionado].iloc[0]
             permissões_atuais = str(linha_user["Permissoes"]).split("|")
             
@@ -508,7 +566,7 @@ elif menu == "👤 Gerenciar Usuários":
                     
                     if st.button("💾 Salvar Alterações do Perfil", type="primary", use_container_width=True):
                         lista_novas_p = []
-                        if e_comanda: lista_p = lista_novas_p.append("💸 Abrir Comanda (Vendas)")
+                        if e_comanda: lista_novas_p.append("💸 Abrir Comanda (Vendas)")
                         if e_clube: lista_novas_p.append("💳 Clube de Assinaturas")
                         if e_gastos: lista_novas_p.append("📉 Lançar Gasto/Despesa")
                         if e_correcao: lista_novas_p.append("✏️ Corrigir Lançamentos")
@@ -521,13 +579,11 @@ elif menu == "👤 Gerenciar Usuários":
                         if e_config: lista_novas_p.append("⚙️ Configurações")
                         
                         nova_perm_str = "|".join(lista_novas_p)
-                        
-                        # Atualizar a linha na tabela mãe
                         usuarios_df.loc[usuarios_df["Usuario"] == usuario_selecionado, "Senha"] = nova_senha_user
                         usuarios_df.loc[usuarios_df["Usuario"] == usuario_selecionado, "Permissoes"] = nova_perm_str
                         usuarios_df.to_csv(ARQUIVO_USUARIOS, index=False, encoding='utf-8')
                         
-                        st.success(f"🔥 Informações e acessos de '{usuario_selecionado}' atualizados com sucesso!")
+                        st.success(f" Informações e acessos de '{usuario_selecionado}' atualizados!")
                         time.sleep(1.2)
                         st.rerun()
             with col_ed_u2:
@@ -666,7 +722,7 @@ elif menu == "⚙️ Configurações":
     st.header("Configurações Globais")
     with st.container(border=True):
         if st.button("🚨 Zerar Clientes de Assinatura", type="primary", use_container_width=True):
-            pd.DataFrame(columns=["Cliente", "Plano", "Data Inicio", "Data Vencimento", "Valor Mensal"]).to_csv(ARQUIVO_ASSINATURAS, index=False, encoding='utf-8')
+            pd.DataFrame(columns=["Cliente", "Plano", "Data Inicio", "Data Vencimento", "Valor Mensal"]).to_csv(ARQUIPO_ASSINATURAS, index=False, encoding='utf-8')
             pd.DataFrame(columns=["Data", "Cliente", "Serviço Usado", "Barbeiro Atendeu"]).to_csv(ARQUIVO_PRESENCAS, index=False, encoding='utf-8')
             st.success("Clube resetado!")
             st.rerun()
