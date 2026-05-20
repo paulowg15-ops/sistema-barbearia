@@ -60,19 +60,20 @@ def inicializar_banco_de_dados():
 
 inicializar_banco_de_dados()
 
-# Carregar dados estruturais básicos
+# Carregar dados dos usuários do arquivo
 usuarios_df = pd.read_csv(ARQUIVO_USUARIOS, encoding='utf-8')
 
-# --- CONFIGURAÇÃO DA LISTA DE PERMISSÕES MASTER ---
+# --- LISTA MESTRE DE PERMISSÕES ---
 PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "⚙️ Configurações"]
+PERMISSOES_PADRAO = ["💸 Abrir Comanda (Vendas)", "📦 Estoque & Serviços"]
 
-# --- GESTÃO DE DISCO DE SESSÃO COM SEGURANÇA ---
+# --- CONTROLE DE SESSÃO EM DISCO ---
 def verificar_sessao_salva():
     if os.path.exists(ARQUIVO_SESSAO):
         try:
             df_s = pd.read_csv(ARQUIVO_SESSAO, encoding='utf-8')
             if not df_s.empty:
-                usuario_salvo = df_s.iloc[0]["Usuario"]
+                usuario_salvo = str(df_s.iloc[0]["Usuario"]).strip().lower()
                 valido_ate_str = df_s.iloc[0]["ValidoAte"]
                 valido_ate = datetime.strptime(valido_ate_str, "%Y-%m-%d %H:%M:%S")
                 if datetime.now() < valido_ate:
@@ -83,40 +84,44 @@ def verificar_sessao_salva():
 
 def salvar_sessao_em_disco(usuario):
     tempo_limite = datetime.now() + timedelta(hours=2)
-    df_s = pd.DataFrame([{"Usuario": usuario, "ValidoAte": tempo_limite.strftime("%Y-%m-%d %H:%M:%S")}])
+    df_s = pd.DataFrame([{"Usuario": str(usuario).strip().lower(), "ValidoAte": tempo_limite.strftime("%Y-%m-%d %H:%M:%S")}])
     df_s.to_csv(ARQUIVO_SESSAO, index=False, encoding='utf-8')
 
 def destruir_sessao_em_disco():
     if os.path.exists(ARQUIVO_SESSAO):
         pd.DataFrame(columns=["Usuario", "ValidoAte"]).to_csv(ARQUIVO_SESSAO, index=False, encoding='utf-8')
 
-# --- INICIALIZAÇÃO BLINDADA DO ESTADO DA SESSÃO ---
+# --- LOGICA DE VERIFICAÇÃO AUTOMÁTICA AO ENTRAR ---
 usuario_detectado = verificar_sessao_salva()
 
 if usuario_detectado:
     st.session_state["autenticado"] = True
     st.session_state["perfil"] = usuario_detectado
     
-    # Buscar e reconstruir permissões do disco imediatamente
-    u_linha = usuarios_df[usuarios_df["Usuario"] == usuario_detectado]
+    # Buscar permissões forçando letras minúsculas para não dar erro de digitação
+    usuarios_df["Usuario_Lower"] = usuarios_df["Usuario"].str.strip().str.lower()
+    u_linha = usuarios_df[usuarios_df["Usuario_Lower"] == usuario_detectado]
+    
     if not u_linha.empty:
         perm_string = u_linha.iloc[0]["Permissoes"]
         if perm_string == "TODAS":
             st.session_state["permissoes_usuario"] = PERMISSOES_MASTER
         else:
             st.session_state["permissoes_usuario"] = perm_string.split("|")
+    else:
+        st.session_state["permissoes_usuario"] = PERMISSOES_PADRAO
 else:
     if "autenticado" not in st.session_state:
         st.session_state["autenticado"] = False
     if "perfil" not in st.session_state:
         st.session_state["perfil"] = None
     if "permissoes_usuario" not in st.session_state:
-        st.session_state["permissoes_usuario"] = ["💸 Abrir Comanda (Vendas)", "📦 Estoque & Serviços"] # Padrão mínimo seguro
+        st.session_state["permissoes_usuario"] = PERMISSOES_PADRAO
 
 if "carrinho_comanda" not in st.session_state:
     st.session_state["carrinho_comanda"] = []
 
-# --- TELA DE LOGIN (CASO DESLOGADO) ---
+# --- TELA DE LOGIN ---
 if not st.session_state["autenticado"]:
     st.title("💈 O Chefão Barbearia e Conveniência")
     st.write("Entre com suas credenciais para gerenciar o sistema")
@@ -124,10 +129,11 @@ if not st.session_state["autenticado"]:
     col_login, _ = st.columns([1, 2])
     with col_login:
         with st.container(border=True):
-            input_usuario = st.text_input("Usuário:")
+            input_usuario = st.text_input("Usuário:").strip().lower()
             input_senha = st.text_input("Senha:", type="password")
             if st.button("🔓 Acessar Sistema", type="primary", use_container_width=True):
-                usuario_valido = usuarios_df[(usuarios_df["Usuario"] == input_usuario) & (usuarios_df["Senha"] == input_senha)]
+                usuarios_df["Usuario_Lower"] = usuarios_df["Usuario"].str.strip().str.lower()
+                usuario_valido = usuarios_df[(usuarios_df["Usuario_Lower"] == input_usuario) & (usuarios_df["Senha"] == input_senha)]
                 
                 if not usuario_valido.empty:
                     st.session_state["autenticado"] = True
@@ -144,10 +150,10 @@ if not st.session_state["autenticado"]:
                     st.error("Usuário ou senha incorretos!")
     st.stop()
 
-# Revalida e estende o tempo ativo a cada clique/ação na tela
+# Estender o temporizador de sessão a cada clique
 salvar_sessao_em_disco(st.session_state["perfil"])
 
-# Carregar o restante das tabelas operacionais
+# Carregar o resto do banco de dados
 servicos_df = pd.read_csv(ARQUIVO_SERVICOS, encoding='utf-8')
 produtos_df = pd.read_csv(ARQUIVO_PRODUTOS, encoding='utf-8')
 vendas_df = pd.read_csv(ARQUIVO_VENDAS, encoding='utf-8')
@@ -156,13 +162,14 @@ barbeiros_df = pd.read_csv(ARQUIVO_BARBEIROS, encoding='utf-8')
 assinaturas_df = pd.read_csv(ARQUIVO_ASSINATURAS, encoding='utf-8')
 presencas_df = pd.read_csv(ARQUIVO_PRESENCAS, encoding='utf-8')
 
-# --- CONSTRUÇÃO DO MENU LATERAL SEGURO ---
+# --- CONFIGURAÇÃO DA BARRA LATERAL ---
 st.sidebar.title("✂️ O Chefão")
 st.sidebar.write(f"Conectado como: **{st.session_state['perfil'].upper()}**")
 st.sidebar.markdown("---")
 
-# Seleção protegida contra falta de chaves
-menu = st.sidebar.radio("Navegação:", st.session_state["permissoes_usuario"])
+# Garante que a lista de menus nunca esteja vazia para evitar travar o st.sidebar.radio
+menus_validos = st.session_state["permissoes_usuario"] if st.session_state["permissoes_usuario"] else PERMISSOES_PADRAO
+menu = st.sidebar.radio("Navegação:", menus_validos)
 
 st.sidebar.markdown("---")
 if st.sidebar.button("🚪 Sair com Segurança", use_container_width=True):
@@ -449,7 +456,7 @@ elif menu == "⚙️ Gerenciar Catálogo":
             if st.button("Atualizar Valor", type="primary"):
                 servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
                 servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-                st.success("🎉 Preço updated!")
+                st.success("🎉 Preço atualizado!")
                 time.sleep(1.2)
                 st.rerun()
     with aba_prod:
@@ -508,7 +515,7 @@ elif menu == "👤 Gerenciar Usuários":
             p_relatorios = st.checkbox("📊 Painel de Relatórios")
             if st.button("💾 Gravar e Liberar Usuário", type="primary", use_container_width=True):
                 if novo_usr != "" and nova_pwd != "":
-                    if novo_usr not in usuarios_df["Usuario"].tolist():
+                    if novo_usr not in usuarios_df["Usuario"].str.lower().tolist():
                         lista_p = []
                         if p_venda: lista_p.append("💸 Abrir Comanda (Vendas)")
                         if p_estoque: lista_p.append("📦 Estoque & Serviços")
@@ -534,7 +541,7 @@ elif menu == "👤 Gerenciar Usuários":
         st.dataframe(usuarios_df["Usuario"], use_container_width=True, hide_index=True)
         st.markdown("---")
         st.subheader("🗑️ Excluir Usuário")
-        usuarios_excluir_lista = [u for u in usuarios_df["Usuario"].tolist() if u != "admin"]
+        usuarios_excluir_lista = [u for u in usuarios_df["Usuario"].tolist() if u.lower() != "admin"]
         if usuarios_excluir_lista:
             usr_remover = st.selectbox("Selecione qual usuário remover da barbearia:", usuarios_excluir_lista)
             if st.button("Bloquear e Excluir Usuário", use_container_width=True):
