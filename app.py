@@ -713,13 +713,15 @@ elif menu == "📊 Painel de Relatórios":
         with col_g1:
             st.write("**📈 Gráfico de Faturamento Diário do Mês**")
             if not vendas_filtradas.empty: 
-                st.line_chart(vendas_filtradas.groupby("Data")["Valor Total"].sum())
+                dados_grafico_vendas = vendas_filtradas.groupby("Data")["Valor Total"].sum()
+                st.line_chart(dados_grafico_vendas)
             else:
                 st.info("Sem vendas registradas neste mês.")
         with col_g2:
             st.write("**💰 Faturamento por Categoria (Serviço vs Produto)**")
             if not vendas_filtradas.empty: 
-                st.bar_chart(vendas_filtradas.groupby("Tipo")["Valor Total"].sum())
+                dados_grafico_tipo = vendas_filtradas.groupby("Tipo")["Valor Total"].sum()
+                st.bar_chart(dados_grafico_tipo)
             else:
                 st.info("Sem dados de faturamento.")
                 
@@ -727,7 +729,7 @@ elif menu == "📊 Painel de Relatórios":
         tab_h1, tab_h2 = st.tabs([f"📋 Histórico de Vendas de {mes_selecionado}", f"📉 Histórico de Gastos de {mes_selecionado}"])
         with tab_h1: 
             st.dataframe(vendas_filtradas.drop(columns=["Ano_Mes"], errors='ignore').sort_index(ascending=False), use_container_width=True, hide_index=True)
-        with tab2: 
+        with tab_h2: 
             st.dataframe(gastos_filtrados.drop(columns=["Ano_Mes"], errors='ignore').sort_index(ascending=False), use_container_width=True, hide_index=True)
 
 # ---------------- MÓDULO 10: CONFIGURAÇÕES ----------------
