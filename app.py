@@ -5,11 +5,12 @@ import os
 import time
 import zipfile
 import io
+import base64
 
-# Configuração da página
+# Configuração da página da Barbearia com o nome oficial completo
 st.set_page_config(page_title="O Chefão Barbearia e Conveniência", layout="wide", initial_sidebar_state="expanded")
 
-# Bancos de dados
+# Bancos de dados em formato CSV
 ARQUIVO_SERVICOS = "servicos.csv"
 ARQUIVO_PRODUTOS = "produtos.csv"
 ARQUIVO_VENDAS = "vendas.csv"
@@ -18,10 +19,10 @@ ARQUIVO_BARBEIROS = "barbeiros.csv"
 ARQUIVO_ASSINATURAS = "assinaturas.csv"
 ARQUIVO_PRESENCAS = "presencas.csv"
 ARQUIVO_USUARIOS = "usuarios.csv"
-ARQUIVO_SESSAO = "sessao_ativa.csv"
 ARQUIVO_CONSUMO_INTERNO = "consumo_interno.csv"
 ARQUIVO_FECHAMENTOS = "fechamentos.csv"
 
+# Lista oficial para o Backup ZIP
 TODOS_ARQUIVOS_BACKUP = {
     "vendas.csv": ARQUIVO_VENDAS,
     "gastos.csv": ARQUIVO_GASTOS,
@@ -38,18 +39,13 @@ def inicializar_banco_de_dados():
         pd.DataFrame([
             {"ID": 1, "Nome do Serviço": "Corte Social", "Preço (R$)": 35.0},
             {"ID": 2, "Nome do Serviço": "Barba Completa", "Preço (R$)": 25.0},
-            {"ID": 3, "Nome do Serviço": "Combo (Corte + Barba)", "Preço (R$)": 55.0},
-            {"ID": 4, "Nome do Serviço": "Acabamento / Pezinho", "Preço (R$)": 15.0},
-            {"ID": 5, "Nome do Serviço": "Platinado / Nevou", "Preço (R$)": 80.0}
+            {"ID": 3, "Nome do Serviço": "Combo (Corte + Barba)", "Preço (R$)": 55.0}
         ]).to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
 
     if not os.path.exists(ARQUIVO_PRODUTOS):
         pd.DataFrame([
             {"ID": 1, "Nome do Produto": "Pomada Modeladora", "Preço de Venda": 40.0, "Preço de Custo": 20.0, "Estoque Inicial": 10, "Comissão Barbeiro (R$)": 5.0},
-            {"ID": 2, "Nome do Produto": "Cerveja Long Neck", "Preço de Venda": 8.0, "Preço de Custo": 4.0, "Estoque Inicial": 24, "Comissão Barbeiro (R$)": 0.0},
-            {"ID": 3, "Nome do Produto": "Refrigerante Lata", "Preço de Venda": 5.0, "Preço de Custo": 2.5, "Estoque Inicial": 24, "Comissão Barbeiro (R$)": 0.0},
-            {"ID": 4, "Nome do Produto": "Água Mineral", "Preço de Venda": 3.0, "Preço de Custo": 1.0, "Estoque Inicial": 10, "Comissão Barbeiro (R$)": 0.0},
-            {"ID": 5, "Nome do Produto": "Óleo para Barba", "Preço de Venda": 35.0, "Preço de Custo": 18.0, "Estoque Inicial": 5, "Comissão Barbeiro (R$)": 3.0}
+            {"ID": 2, "Nome do Produto": "Cerveja Long Neck", "Preço de Venda": 8.0, "Preço de Custo": 4.0, "Estoque Inicial": 24, "Comissão Barbeiro (R$)": 0.0}
         ]).to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
 
     for arquivo in TODOS_ARQUIVOS_BACKUP.values():
@@ -63,9 +59,6 @@ def inicializar_banco_de_dados():
             else:
                 pd.DataFrame().to_csv(arquivo, index=False, encoding='utf-8')
 
-    if not os.path.exists(ARQUIVO_SESSAO):
-        pd.DataFrame(columns=["Usuario", "ValidoAte"]).to_csv(ARQUIVO_SESSAO, index=False, encoding='utf-8')
-
 inicializar_banco_de_dados()
 
 usuarios_df = pd.read_csv(ARQUIVO_USUARIOS, encoding='utf-8')
@@ -73,47 +66,40 @@ usuarios_df = pd.read_csv(ARQUIVO_USUARIOS, encoding='utf-8')
 PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "🔒 Fechamento de Dia", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "💾 Backup do Sistema", "⚙️ Configurações"]
 PERMISSOES_PADRAO = ["💸 Abrir Comanda (Vendas)", "📦 Estoque & Serviços"]
 
-# --- CONTROLE DE SESSÃO ---
-def verificar_sessao_salva():
-    if os.path.exists(ARQUIVO_SESSAO):
-        try:
-            df_s = pd.read_csv(ARQUIVO_SESSAO, encoding='utf-8')
-            if not df_s.empty:
-                usuario_salvo = str(df_s.iloc[0]["Usuario"]).strip().lower()
-                valido_ate_str = df_s.iloc[0]["ValidoAte"]
-                valido_ate = datetime.strptime(valido_ate_str, "%Y-%m-%d %H:%M:%S")
-                if datetime.now() < valido_ate:
-                    return usuario_salvo
-        except: pass
+# --- NOVO SISTEMA DE LOGIN MULTI-USUÁRIO (TOKEN VIA URL) ---
+def gerar_token(usuario):
+    validade = (datetime.now() + timedelta(hours=12)).strftime("%Y-%m-%d %H:%M:%S")
+    texto = f"{usuario}|{validade}"
+    return base64.b64encode(texto.encode('utf-8')).decode('utf-8')
+
+def validar_token(token):
+    try:
+        texto = base64.b64decode(token.encode('utf-8')).decode('utf-8')
+        usuario, validade_str = texto.split("|")
+        validade = datetime.strptime(validade_str, "%Y-%m-%d %H:%M:%S")
+        if datetime.now() <= validade:
+            return usuario
+    except:
+        pass
     return None
 
-def salvar_sessao_em_disco(usuario):
-    tempo_limite = datetime.now() + timedelta(hours=2)
-    df_s = pd.DataFrame([{"Usuario": str(usuario).strip().lower(), "ValidoAte": tempo_limite.strftime("%Y-%m-%d %H:%M:%S")}])
-    df_s.to_csv(ARQUIVO_SESSAO, index=False, encoding='utf-8')
+if "autenticado" not in st.session_state:
+    st.session_state["autenticado"] = False
+    st.session_state["perfil"] = None
+    st.session_state["permissoes_usuario"] = PERMISSOES_PADRAO
+    st.session_state["carrinho_comanda"] = []
 
-def destruir_sessao_em_disco():
-    if os.path.exists(ARQUIVO_SESSAO):
-        pd.DataFrame(columns=["Usuario", "ValidoAte"]).to_csv(ARQUIVO_SESSAO, index=False, encoding='utf-8')
-
-usuario_detectado = verificar_sessao_salva()
-
-if usuario_detectado:
-    st.session_state["autenticado"] = True
-    st.session_state["perfil"] = usuario_detectado
-    usuarios_df["Usuario_Lower"] = usuarios_df["Usuario"].str.strip().str.lower()
-    u_linha = usuarios_df[usuarios_df["Usuario_Lower"] == usuario_detectado]
-    if not u_linha.empty:
-        perm_string = u_linha.iloc[0]["Permissoes"]
-        st.session_state["permissoes_usuario"] = PERMISSOES_MASTER if perm_string == "TODAS" else perm_string.split("|")
-    else:
-        st.session_state["permissoes_usuario"] = PERMISSOES_PADRAO
-else:
-    if "autenticado" not in st.session_state: st.session_state["autenticado"] = False
-    if "perfil" not in st.session_state: st.session_state["perfil"] = None
-    if "permissoes_usuario" not in st.session_state: st.session_state["permissoes_usuario"] = PERMISSOES_PADRAO
-
-if "carrinho_comanda" not in st.session_state: st.session_state["carrinho_comanda"] = []
+# Checagem automática do F5 (lendo o token da URL individual)
+if not st.session_state["autenticado"] and "token" in st.query_params:
+    usr_decodificado = validar_token(st.query_params["token"])
+    if usr_decodificado:
+        usuarios_df["Usuario_Lower"] = usuarios_df["Usuario"].str.strip().str.lower()
+        u_linha = usuarios_df[usuarios_df["Usuario_Lower"] == usr_decodificado.strip().lower()]
+        if not u_linha.empty:
+            st.session_state["autenticado"] = True
+            st.session_state["perfil"] = usr_decodificado
+            perm_string = u_linha.iloc[0]["Permissoes"]
+            st.session_state["permissoes_usuario"] = PERMISSOES_MASTER if perm_string == "TODAS" else perm_string.split("|")
 
 # --- TELA DE LOGIN ---
 if not st.session_state["autenticado"]:
@@ -127,18 +113,20 @@ if not st.session_state["autenticado"]:
             if st.button("🔓 Acessar Sistema", type="primary", use_container_width=True):
                 usuarios_df["Usuario_Lower"] = usuarios_df["Usuario"].str.strip().str.lower()
                 usuario_valido = usuarios_df[(usuarios_df["Usuario_Lower"] == input_usuario) & (usuarios_df["Senha"] == input_senha)]
+                
                 if not usuario_valido.empty:
                     st.session_state["autenticado"] = True
                     st.session_state["perfil"] = input_usuario
-                    salvar_sessao_em_disco(input_usuario)
+                    
+                    # Salva o token na barra de endereços (URL) para proteger o F5 sem bloquear outros
+                    st.query_params["token"] = gerar_token(input_usuario)
+                    
                     perm_string = usuario_valido.iloc[0]["Permissoes"]
                     st.session_state["permissoes_usuario"] = PERMISSOES_MASTER if perm_string == "TODAS" else perm_string.split("|")
                     st.rerun()
                 else:
                     st.error("Usuário ou senha incorretos!")
     st.stop()
-
-salvar_sessao_em_disco(st.session_state["perfil"])
 
 # Carregar tabelas completas
 servicos_df = pd.read_csv(ARQUIVO_SERVICOS, encoding='utf-8')
@@ -155,15 +143,17 @@ fechamentos_df = pd.read_csv(ARQUIVO_FECHAMENTOS, encoding='utf-8').dropna(how='
 st.sidebar.title("✂️ O Chefão")
 st.sidebar.write(f"Conectado como: **{st.session_state['perfil'].upper()}**")
 st.sidebar.markdown("---")
+
 menus_validos = st.session_state["permissoes_usuario"] if st.session_state["permissoes_usuario"] else PERMISSOES_PADRAO
 menu = st.sidebar.radio("Navegação:", menus_validos)
+
 st.sidebar.markdown("---")
 if st.sidebar.button("🚪 Sair com Segurança", use_container_width=True):
     st.session_state["autenticado"] = False
     st.session_state["perfil"] = None
     st.session_state["permissoes_usuario"] = []
     st.session_state["carrinho_comanda"] = []
-    destruir_sessao_em_disco()
+    st.query_params.clear() # Limpa o link para deslogar de verdade
     st.rerun()
 
 # ---------------- MÓDULO 1: COMANDA ELETRÔNICA ----------------
@@ -261,17 +251,14 @@ elif menu == "💳 Clube de Assinaturas":
                 else: st.info(f"🟢 **{r['Cliente']}** | Vencimento: {r['Data Vencimento']} ({dias_restantes} dias)")
             st.markdown("---")
             assinante_remover = st.selectbox("Selecione o Cliente para Cancelar Plano:", assinaturas_df["Cliente"].tolist())
-            
-            # PROTEÇÃO SUPER ADMIN AQUI:
             if st.session_state["perfil"] == "admin":
                 if st.button("Remover Assinatura do Cliente", type="secondary"):
                     assinaturas_df = assinaturas_df[assinaturas_df["Cliente"] != assinante_remover]
                     assinaturas_df.to_csv(ARQUIVO_ASSINATURAS, index=False, encoding='utf-8')
-                    st.success("🗑️ Cliente removido do clube.")
+                    st.success("🗑️ Cliente removido.")
                     time.sleep(1.2)
                     st.rerun()
-            else: st.error("🚫 Apenas o admin pode cancelar assinaturas do sistema.")
-            
+            else: st.error("🚫 Apenas o admin pode cancelar assinaturas.")
     with tab_ass2:
         with st.container(border=True):
             if not assinaturas_df.empty:
@@ -307,12 +294,10 @@ elif menu == "📉 Lançar Gasto/Despesa":
                 time.sleep(1.2)
                 st.rerun()
 
-# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS E FECHAMENTOS (BLINDADO) ----------------
+# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS ----------------
 elif menu == "✏️ Corrigir Lançamentos":
     st.header("✏️ Central de Correções e Estornos")
-    
     tab_corr_vendas, tab_corr_fechamentos = st.tabs(["🛒 Corrigir Comandas de Caixa", "🔒 Auditar Fechamentos Diários"])
-    
     with tab_corr_vendas:
         if not vendas_df.empty:
             vendas_visivel_df = vendas_df.copy()
@@ -325,8 +310,8 @@ elif menu == "✏️ Corrigir Lançamentos":
                     id_selecionado = st.selectbox("Selecione o ID do lançamento:", vendas_visivel_df["ID_Lancamento"].tolist())
                     linha_original = vendas_df.iloc[id_selecionado]
                     lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
-                    novo_b = st.selectbox("Mudar Barbeiro para:", lista_barbeiros_sistema, index=lista_barbeiros_sistema.index(linha_original['Barbeiro']) if linha_original['Barbeiro'] in lista_barbeiros_sistema else 0)
-                    nova_f_pagto = st.selectbox("Mudar Forma de Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"], index=["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"].index(linha_original['Forma de Pagamento']))
+                    novo_b = st.selectbox("Mudar Barbeiro:", lista_barbeiros_sistema, index=lista_barbeiros_sistema.index(linha_original['Barbeiro']) if linha_original['Barbeiro'] in lista_barbeiros_sistema else 0)
+                    nova_f_pagto = st.selectbox("Mudar Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"], index=["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"].index(linha_original['Forma de Pagamento']))
                     novo_cliente_nome = st.text_input("Nome do Cliente:", value=linha_original['Cliente'])
                     if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
                         vendas_df.at[id_selecionado, 'Barbeiro'] = novo_b
@@ -340,8 +325,6 @@ elif menu == "✏️ Corrigir Lançamentos":
                 with st.container(border=True):
                     st.subheader("🗑️ Apagar Lançamento")
                     id_remover = st.selectbox("Selecione o ID para remover:", vendas_visivel_df["ID_Lancamento"].tolist())
-                    
-                    # PROTEÇÃO SUPER ADMIN AQUI:
                     if st.session_state["perfil"] == "admin":
                         if st.button("❌ Excluir Lançamento Errado", use_container_width=True):
                             vendas_df = vendas_df.drop(id_remover).reset_index(drop=True)
@@ -349,28 +332,25 @@ elif menu == "✏️ Corrigir Lançamentos":
                             st.success("🗑️ Removido!")
                             time.sleep(1.2)
                             st.rerun()
-                    else: st.error("🚫 Acesso Negado: Apenas o Administrador pode apagar vendas do sistema.")
-        else: st.info("Nenhuma venda disponível para corrigir.")
+                    else: st.error("🚫 Acesso Negado: Apenas o Administrador pode apagar vendas.")
+        else: st.info("Nenhuma venda disponível.")
 
     with tab_corr_fechamentos:
         st.subheader("🗑️ Excluir Fechamento Diário Incorreto")
-        # PROTEÇÃO SUPER ADMIN AQUI:
         if st.session_state["perfil"] == "admin":
             if not fechamentos_df.empty:
                 fech_visivel_df = fechamentos_df.copy()
                 fech_visivel_df.insert(0, "ID_Fechamento", fech_visivel_df.index)
                 st.dataframe(fech_visivel_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
-                id_fech_remover = st.selectbox("Selecione o ID do fechamento para remover:", fech_visivel_df["ID_Fechamento"].tolist())
-                
+                id_fech_remover = st.selectbox("Selecione o ID para remover:", fech_visivel_df["ID_Fechamento"].tolist())
                 if st.button("❌ Excluir Fechamento Selecionado", use_container_width=True):
                     fechamentos_df = fechamentos_df.drop(id_fech_remover).reset_index(drop=True)
                     fechamentos_df.to_csv(ARQUIVO_FECHAMENTOS, index=False, encoding='utf-8')
-                    st.success("🗑️ Fechamento removido do histórico de auditoria!")
+                    st.success("🗑️ Fechamento removido do histórico!")
                     time.sleep(1.2)
                     st.rerun()
             else: st.info("Nenhum fechamento registrado no sistema.")
-        else:
-            st.error("🚫 Acesso Negado: Apenas o Administrador Geral pode anular ou excluir um fechamento de caixa auditado.")
+        else: st.error("🚫 Acesso Negado: Apenas o Admin pode anular um fechamento.")
 
 # ---------------- MÓDULO 5: FECHAMENTO DE DIA ----------------
 elif menu == "🔒 Fechamento de Dia":
@@ -384,11 +364,10 @@ elif menu == "🔒 Fechamento de Dia":
         col_fe1, col_fe2 = st.columns(2, gap="large")
         with col_fe1:
             with st.container(border=True):
-                st.subheader("📊 Valores Contados na Gaveta")
-                real_dinheiro = st.number_input("Dinheiro Físico (R$):", min_value=0.0, step=5.0)
+                real_dinheiro = st.number_input("Dinheiro Físico na Gaveta (R$):", min_value=0.0, step=5.0)
                 real_pix = st.number_input("Pix (R$):", min_value=0.0, step=5.0)
                 real_cartao = st.number_input("Cartões (R$):", min_value=0.0, step=5.0)
-                obs_fechamento = st.text_area("Observações do Fechamento:", placeholder="Ex: Faltou troco...")
+                obs_fechamento = st.text_area("Observações:", placeholder="Ex: Faltou troco...")
                 total_real_calculado = real_dinheiro + real_pix + real_cartao
                 diferenca_caixa = total_real_calculado - total_sistema_hoje
                 if diferenca_caixa == 0: status_caixa = "🟢 Bateu Perfeitamente"
@@ -403,9 +382,8 @@ elif menu == "🔒 Fechamento de Dia":
                     st.rerun()
         with col_fe2:
             with st.container(border=True):
-                st.subheader("⚖️ Comparativo em Tempo Real")
                 st.metric("📱 Esperado no Sistema", f"R$ {total_sistema_hoje:.2f}")
-                st.metric("💵 Contado", f"R$ {total_real_calculado:.2f}")
+                st.metric("💵 Contado na Realidade", f"R$ {total_real_calculado:.2f}")
                 st.metric("📊 Status", status_caixa)
     with tab_f_2:
         if not fechamentos_df.empty: st.dataframe(fechamentos_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
@@ -431,7 +409,6 @@ elif menu == "👥 Cadastrar Barbeiro":
         with st.container(border=True):
             if not barbeiros_df.empty:
                 barbeiro_remover = st.selectbox("Selecione para Remover:", barbeiros_df["Nome"].tolist())
-                # PROTEÇÃO SUPER ADMIN AQUI:
                 if st.session_state["perfil"] == "admin":
                     if st.button("Remover Permanentemente", use_container_width=True):
                         barbeiros_df = barbeiros_df[barbeiros_df["Nome"] != barbeiro_remover]
@@ -488,17 +465,15 @@ elif menu == "⚙️ Gerenciar Catálogo":
                         time.sleep(1.2)
                         st.rerun()
                 with c_btn_s2:
-                    # PROTEÇÃO SUPER ADMIN AQUI:
                     if st.session_state["perfil"] == "admin":
                         if st.button("❌ Excluir Serviço", use_container_width=True):
                             servicos_df = servicos_df[servicos_df["Nome do Serviço"] != servico_editar]
                             servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-                            st.success("🗑️ Serviço excluído do catálogo!")
+                            st.success("🗑️ Serviço excluído!")
                             time.sleep(1.2)
                             st.rerun()
                     else: st.error("🚫 Bloqueado")
-        with col_s_2:
-            st.dataframe(servicos_df, use_container_width=True, hide_index=True)
+        with col_s_2: st.dataframe(servicos_df, use_container_width=True, hide_index=True)
 
     with aba_prod:
         col_p_1, col_p_2 = st.columns(2, gap="large")
@@ -517,28 +492,27 @@ elif menu == "⚙️ Gerenciar Catálogo":
                         novo_p = pd.DataFrame([{"ID": novo_id, "Nome do Produto": p_nome, "Preço de Venda": p_venda, "Preço de Custo": p_custo, "Estoque Inicial": p_estoque, "Comissão Barbeiro (R$)": p_comis}])
                         produtos_df = pd.concat([produtos_df, novo_p], ignore_index=True)
                         produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
-                        st.success("📦 Produto inserido!")
+                        st.success("📦 Inserido!")
                         time.sleep(1.2)
                         st.rerun()
             with st.container(border=True):
                 st.subheader("Editar ou Excluir Produto Existente")
-                prod_editar = st.selectbox("Selecione o Produto para Modificar/Excluir:", produtos_df["Nome do Produto"].tolist(), key="sb_edit_p")
+                prod_editar = st.selectbox("Selecione o Produto:", produtos_df["Nome do Produto"].tolist(), key="sb_edit_p")
                 col_ed1, col_ed2, col_ed3, col_ed4 = st.columns(4)
                 item_linha = produtos_df[produtos_df["Nome do Produto"] == prod_editar]
                 with col_ed1: ed_venda = st.number_input("Preço Venda:", value=float(item_linha["Preço de Venda"].values[0]), key="num_p_v")
                 with col_ed2: ed_custo = st.number_input("Preço Custo:", value=float(item_linha["Preço de Custo"].values[0]), key="num_p_c")
-                with col_ed3: ed_estoque = st.number_input("Estoque Inicial:", value=int(item_linha["Estoque Inicial"].values[0]), key="num_p_e")
-                with col_ed4: ed_comis = st.number_input("Comissão Fixa R$:", value=float(item_linha["Comissão Barbeiro (R$)"].values[0]), key="num_p_cm")
+                with col_ed3: ed_estoque = st.number_input("Estoque Atual:", value=int(item_linha["Estoque Inicial"].values[0]), key="num_p_e")
+                with col_ed4: ed_comis = st.number_input("Comissão R$:", value=float(item_linha["Comissão Barbeiro (R$)"].values[0]), key="num_p_cm")
                 c_btn_p1, c_btn_p2 = st.columns(2)
                 with c_btn_p1:
                     if st.button("Salvar Modificações", type="primary", use_container_width=True):
                         produtos_df.loc[produtos_df["Nome do Produto"] == prod_editar, ["Preço de Venda", "Preço de Custo", "Estoque Inicial", "Comissão Barbeiro (R$)"]] = [ed_venda, ed_custo, ed_estoque, ed_comis]
                         produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
-                        st.success("🎉 Informações atualizadas!")
+                        st.success("🎉 Atualizado!")
                         time.sleep(1.2)
                         st.rerun()
                 with c_btn_p2:
-                    # PROTEÇÃO SUPER ADMIN AQUI:
                     if st.session_state["perfil"] == "admin":
                         if st.button("❌ Excluir Produto", use_container_width=True):
                             produtos_df = produtos_df[produtos_df["Nome do Produto"] != prod_editar]
@@ -547,12 +521,10 @@ elif menu == "⚙️ Gerenciar Catálogo":
                             time.sleep(1.2)
                             st.rerun()
                     else: st.error("🚫 Bloqueado")
-        with col_p_2:
-            st.dataframe(produtos_df, use_container_width=True, hide_index=True)
+        with col_p_2: st.dataframe(produtos_df, use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 9: GERENCIAR USUÁRIOS, PERMISSÕES E EDITAR ----------------
+# ---------------- MÓDULO 9: GERENCIAR USUÁRIOS ----------------
 elif menu == "👤 Gerenciar Usuários":
-    # PROTEÇÃO TOTAL: NINGUÉM ALÉM DO ADMIN PODE USAR ESSA TELA MESMO SE TIVER O MENU
     if st.session_state["perfil"] == "admin":
         st.header("👤 Gerenciamento de Usuários e Níveis de Acesso")
         tab_usr1, tab_usr2 = st.tabs(["➕ Criar Novo Perfil", "✏️ Editar ou Resetar Perfil Existente"])
@@ -560,25 +532,23 @@ elif menu == "👤 Gerenciar Usuários":
             col_u1, col_u2 = st.columns(2, gap="large")
             with col_u1:
                 with st.container(border=True):
-                    st.subheader("➕ Criar Novo Perfil de Acesso")
-                    novo_usr = st.text_input("Nome do Usuário de Login (Sem espaços):", key="new_user_input").strip().lower()
-                    nova_pwd = st.text_input("Definir Senha de Acesso:", type="password", key="new_pwd_input")
+                    novo_usr = st.text_input("Nome do Usuário de Login (Sem espaços):", key="n_u").strip().lower()
+                    nova_pwd = st.text_input("Definir Senha de Acesso:", type="password", key="n_p")
                     st.write("**Marque quais telas este usuário poderá ver:**")
-                    p_comanda = st.checkbox("💸 Abrir Comanda (Vendas)", value=True, key="chk_c_1")
-                    p_clube = st.checkbox("💳 Clube de Assinaturas", key="chk_cl_1")
-                    p_gastos = st.checkbox("📉 Lançar Gasto/Despesa", key="chk_g_1")
-                    p_correcao = st.checkbox("✏️ Corrigir Lançamentos", key="chk_cor_1")
-                    p_fechamento = st.checkbox("🔒 Fechamento de Dia", key="chk_f_1")
-                    p_barbeiro = st.checkbox("👥 Cadastrar Barbeiro", key="chk_b_1")
-                    p_estoque = st.checkbox("📦 Estoque & Serviços", value=True, key="chk_e_1")
-                    p_catalogo = st.checkbox("⚙️ Gerenciar Catálogo", key="chk_cat_1")
-                    p_ger_usr = st.checkbox("👤 Gerenciar Usuários", key="chk_gu_1")
-                    p_relatorios = st.checkbox("📊 Painel de Relatórios", key="chk_r_1")
-                    p_backup = st.checkbox("💾 Backup do Sistema", key="chk_bk_1")
-                    p_config = st.checkbox("⚙️ Configurações", key="chk_conf_1")
-                    
-                    if st.button("💾 Gravar e Liberar Usuário", type="primary", use_container_width=True):
-                        if novo_usr != "" and nova_pwd != "":
+                    p_comanda = st.checkbox("💸 Abrir Comanda (Vendas)", value=True)
+                    p_clube = st.checkbox("💳 Clube de Assinaturas")
+                    p_gastos = st.checkbox("📉 Lançar Gasto/Despesa")
+                    p_correcao = st.checkbox("✏️ Corrigir Lançamentos")
+                    p_fechamento = st.checkbox("🔒 Fechamento de Dia")
+                    p_barbeiro = st.checkbox("👥 Cadastrar Barbeiro")
+                    p_estoque = st.checkbox("📦 Estoque & Serviços", value=True)
+                    p_catalogo = st.checkbox("⚙️ Gerenciar Catálogo")
+                    p_ger_usr = st.checkbox("👤 Gerenciar Usuários")
+                    p_relatorios = st.checkbox("📊 Painel de Relatórios")
+                    p_backup = st.checkbox("💾 Backup do Sistema")
+                    p_config = st.checkbox("⚙️ Configurações")
+                    if st.button("💾 Gravar Novo Usuário", type="primary", use_container_width=True):
+                        if novo_usr and nova_pwd:
                             if novo_usr not in usuarios_df["Usuario"].str.lower().tolist():
                                 lista_p = []
                                 if p_comanda: lista_p.append("💸 Abrir Comanda (Vendas)")
@@ -601,12 +571,9 @@ elif menu == "👤 Gerenciar Usuários":
                                 time.sleep(1.2)
                                 st.rerun()
                             else: st.error("Usuário já existe.")
-            with col_u2:
-                st.subheader("📋 Usuários Ativos")
-                st.dataframe(usuarios_df[["Usuario", "Permissoes"]], use_container_width=True, hide_index=True)
+            with col_u2: st.dataframe(usuarios_df[["Usuario", "Permissoes"]], use_container_width=True, hide_index=True)
 
         with tab_usr2:
-            st.subheader("✏️ Alterar Acessos e Modificar Senhas")
             lista_usuarios_editaveis = [u for u in usuarios_df["Usuario"].tolist() if u.lower() != "admin"]
             if lista_usuarios_editaveis:
                 usuario_selecionado = st.selectbox("Selecione qual usuário deseja editar:", lista_usuarios_editaveis)
@@ -615,22 +582,23 @@ elif menu == "👤 Gerenciar Usuários":
                 col_ed_u1, col_ed_u2 = st.columns(2, gap="large")
                 with col_ed_u1:
                     with st.container(border=True):
-                        st.markdown(f"#### 🔒 Resetar Senha de: **{usuario_selecionado.upper()}**")
-                        nova_senha_user = st.text_input("Digite a Nova Senha para este Usuário:", value=str(linha_user["Senha"]))
-                        st.markdown("#### ⚙️ Alterar Telas de Acesso")
-                        e_comanda = st.checkbox("💸 Abrir Comanda (Vendas)", value=("💸 Abrir Comanda (Vendas)" in permissões_atuais), key="chk_c_2")
-                        e_clube = st.checkbox("💳 Clube de Assinaturas", value=("💳 Clube de Assinaturas" in permissões_atuais), key="chk_cl_2")
-                        e_gastos = st.checkbox("📉 Lançar Gasto/Despesa", value=("📉 Lançar Gasto/Despesa" in permissões_atuais), key="chk_g_2")
-                        e_correcao = st.checkbox("✏️ Corrigir Lançamentos", value=("✏️ Corrigir Lançamentos" in permissões_atuais), key="chk_cor_2")
-                        e_fechamento = st.checkbox("🔒 Fechamento de Dia", value=("🔒 Fechamento de Dia" in permissões_atuais), key="chk_f_2")
-                        e_barbeiro = st.checkbox("👥 Cadastrar Barbeiro", value=("👥 Cadastrar Barbeiro" in permissões_atuais), key="chk_b_2")
-                        e_estoque = st.checkbox("📦 Estoque & Serviços", value=("📦 Estoque & Serviços" in permissões_atuais), key="chk_e_2")
-                        e_catalogo = st.checkbox("⚙️ Gerenciar Catálogo", value=("⚙️ Gerenciar Catálogo" in permissões_atuais), key="chk_cat_2")
-                        e_ger_usr = st.checkbox("👤 Gerenciar Usuários", value=("👤 Gerenciar Usuários" in permissões_atuais), key="chk_gu_2")
-                        e_relatorios = st.checkbox("📊 Painel de Relatórios", value=("📊 Painel de Relatórios" in permissões_atuais), key="chk_r_2")
-                        e_backup = st.checkbox("💾 Backup do Sistema", value=("💾 Backup do Sistema" in permissões_atuais), key="chk_bk_2")
-                        e_config = st.checkbox("⚙️ Configurações", value=("⚙️ Configurações" in permissões_atuais), key="chk_conf_2")
-                        if st.button("💾 Salvar Alterações do Perfil", type="primary", use_container_width=True):
+                        st.markdown(f"#### 🔒 Resetar Senha: **{usuario_selecionado.upper()}**")
+                        nova_senha_user = st.text_input("Nova Senha:", value=str(linha_user["Senha"]))
+                        st.markdown("#### ⚙️ Telas de Acesso")
+                        e_comanda = st.checkbox("💸 Abrir Comanda", value=("💸 Abrir Comanda (Vendas)" in permissões_atuais))
+                        e_clube = st.checkbox("💳 Clube de Assinaturas", value=("💳 Clube de Assinaturas" in permissões_atuais))
+                        e_gastos = st.checkbox("📉 Lançar Gasto", value=("📉 Lançar Gasto/Despesa" in permissões_atuais))
+                        e_correcao = st.checkbox("✏️ Corrigir Lançamentos", value=("✏️ Corrigir Lançamentos" in permissões_atuais))
+                        e_fechamento = st.checkbox("🔒 Fechamento de Dia", value=("🔒 Fechamento de Dia" in permissões_atuais))
+                        e_barbeiro = st.checkbox("👥 Cadastrar Barbeiro", value=("👥 Cadastrar Barbeiro" in permissões_atuais))
+                        e_estoque = st.checkbox("📦 Estoque & Serviços", value=("📦 Estoque & Serviços" in permissões_atuais))
+                        e_catalogo = st.checkbox("⚙️ Gerenciar Catálogo", value=("⚙️ Gerenciar Catálogo" in permissões_atuais))
+                        e_ger_usr = st.checkbox("👤 Gerenciar Usuários", value=("👤 Gerenciar Usuários" in permissões_atuais))
+                        e_relatorios = st.checkbox("📊 Painel de Relatórios", value=("📊 Painel de Relatórios" in permissões_atuais))
+                        e_backup = st.checkbox("💾 Backup do Sistema", value=("💾 Backup do Sistema" in permissões_atuais))
+                        e_config = st.checkbox("⚙️ Configurações", value=("⚙️ Configurações" in permissões_atuais))
+                        
+                        if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
                             lista_novas_p = []
                             if e_comanda: lista_novas_p.append("💸 Abrir Comanda (Vendas)")
                             if e_clube: lista_novas_p.append("💳 Clube de Assinaturas")
@@ -644,25 +612,23 @@ elif menu == "👤 Gerenciar Usuários":
                             if e_relatorios: lista_novas_p.append("📊 Painel de Relatórios")
                             if e_backup: lista_novas_p.append("💾 Backup do Sistema")
                             if e_config: lista_novas_p.append("⚙️ Configurações")
-                            nova_perm_str = "|".join(lista_novas_p)
+                            
                             usuarios_df.loc[usuarios_df["Usuario"] == usuario_selecionado, "Senha"] = nova_senha_user
-                            usuarios_df.loc[usuarios_df["Usuario"] == usuario_selecionado, "Permissoes"] = nova_perm_str
+                            usuarios_df.loc[usuarios_df["Usuario"] == usuario_selecionado, "Permissoes"] = "|".join(lista_novas_p)
                             usuarios_df.to_csv(ARQUIVO_USUARIOS, index=False, encoding='utf-8')
                             st.success("⚙️ Perfil atualizado!")
                             time.sleep(1.2)
                             st.rerun()
                 with col_ed_u2:
                     with st.container(border=True):
-                        st.subheader("🗑️ Remover Conta do Funcionário")
+                        st.subheader("🗑️ Remover Conta")
                         if st.button("Bloquear e Excluir Usuário", use_container_width=True):
                             usuarios_df = usuarios_df[usuarios_df["Usuario"] != usuario_selecionado]
                             usuarios_df.to_csv(ARQUIVO_USUARIOS, index=False, encoding='utf-8')
-                            st.success(f"Usuário '{usuario_selecionado}' removido!")
+                            st.success(f"Removido!")
                             time.sleep(1.2)
                             st.rerun()
-            else: st.info("Nenhum usuário cadastrado para alteração no momento.")
-    else:
-        st.error("🚨 ÁREA RESTRITA AO SUPER ADMINISTRADOR GERAL.")
+    else: st.error("🚨 ÁREA RESTRITA AO SUPER ADMINISTRADOR.")
 
 # ---------------- MÓDULO 10: PAINEL DE RELATÓRIOS ----------------
 elif menu == "📊 Painel de Relatórios":
@@ -683,10 +649,12 @@ elif menu == "📊 Painel de Relatórios":
     faturamento_mes = vendas_filtradas["Valor Total"].sum()
     total_gastos_mes = gastos_filtrados["Valor (R$)"].sum()
     lucro_liquido_mes = faturamento_mes - total_gastos_mes
+    
     c1, c2, c3 = st.columns(3)
-    c1.metric(f"💰 FATURAMENTO BRUTO ({mes_selecionado})", f"R$ {faturamento_mes:.2f}")
-    c2.metric(f"📉 TOTAL DE GASTOS ({mes_selecionado})", f"R$ {total_gastos_mes:.2f}")
-    c3.metric(f"🔥 LUCRO LÍQUIDO REAL ({mes_selecionado})", f"R$ {lucro_liquido_mes:.2f}")
+    c1.metric(f"💰 FATURAMENTO ({mes_selecionado})", f"R$ {faturamento_mes:.2f}")
+    c2.metric(f"📉 GASTOS ({mes_selecionado})", f"R$ {total_gastos_mes:.2f}")
+    c3.metric(f"🔥 LUCRO LÍQUIDO ({mes_selecionado})", f"R$ {lucro_liquido_mes:.2f}")
+    
     st.markdown("<br>", unsafe_allow_html=True)
     tab_rel1, tab_rel2, tab_rel3 = st.tabs(["💸 Fechamento Semanal & Comissões", "🥤 Consumo Interno (Staff)", "📅 Visão Mensal Expandida"])
     with tab_rel1:
@@ -699,12 +667,9 @@ elif menu == "📊 Painel de Relatórios":
                 porcentagem_servico = b["Comissão (%)"]
                 vendas_do_barbeiro = vendas_df[vendas_df["Barbeiro"] == nome_b]
                 servicos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Serviço"]
-                faturamento_servicos = servicos_b["Valor Total"].sum()
-                valor_comissao_servico = faturamento_servicos * (porcentagem_servico / 100.0)
+                valor_comissao_servico = servicos_b["Valor Total"].sum() * (porcentagem_servico / 100.0)
                 produtos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Produto"]
-                valor_comissao_produto = 0.0
-                for _, venda_p in produtos_b.iterrows():
-                    valor_comissao_produto += float(mapa_comissao_produto.get(venda_p["Item"], 0.0)) * float(venda_p["Quantidade"])
+                valor_comissao_produto = sum([float(mapa_comissao_produto.get(v["Item"], 0.0)) * float(v["Quantidade"]) for _, v in produtos_b.iterrows()])
                 total_ganho_bruto = valor_comissao_servico + valor_comissao_produto
                 valor_divida_consumo = float(mapa_desconto_consumo.get(nome_b, 0.0))
                 relatorio_comissao.append({
@@ -725,13 +690,14 @@ elif menu == "📊 Painel de Relatórios":
             consumo_interno_df.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
             st.success("Salvo!")
             st.rerun()
-        if st.button("⚠️ Limpar Extrato da Semana"):
-            pd.DataFrame(columns=["Data", "Responsavel", "Item", "Quantidade", "Valor Total"]).to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
-            st.rerun()
+        if st.session_state["perfil"] == "admin":
+            if st.button("⚠️ Limpar Extrato da Semana (Apenas Admin)"):
+                pd.DataFrame(columns=["Data", "Responsavel", "Item", "Quantidade", "Valor Total"]).to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
+                st.rerun()
     with tab_rel3:
         if not vendas_filtradas.empty: st.line_chart(vendas_filtradas.groupby("Data")["Valor Total"].sum())
 
-# ---------------- MÓDULO 11: TELA DE BACKUP UNIFICADO COMPLETO ----------------
+# ---------------- MÓDULO 11: TELA DE BACKUP UNIFICADO ----------------
 elif menu == "💾 Backup do Sistema":
     if st.session_state["perfil"] == "admin":
         st.header("💾 Sistema Unificado de Backup Completo (.ZIP)")
@@ -744,21 +710,21 @@ elif menu == "💾 Backup do Sistema":
             buffer_zip.seek(0)
             st.download_button(label="📥 Baixar Backup Completo (ZIP)", data=buffer_zip, file_name=f"backup_total_ochefao_{datetime.now().strftime('%Y%m%d')}.zip", mime="application/zip", use_container_width=True)
         with aba_imp_zip:
-            st.subheader("Suba o arquivo .ZIP de backup completo para restaurar tudo:")
+            st.subheader("Suba o arquivo .ZIP para restaurar tudo:")
             arquivo_zip_subido = st.file_uploader("Escolha o arquivo unificado (.zip):", type=["zip"])
             if arquivo_zip_subido is not None:
-                if st.button("🚀 Restaurar Todo o Sistema de Uma Vez", type="primary", use_container_width=True):
+                if st.button("🚀 Restaurar Todo o Sistema", type="primary", use_container_width=True):
                     try:
                         with zipfile.ZipFile(arquivo_zip_subido, "r") as z:
                             for nome_csv, caminho_real in TODOS_ARQUIVOS_BACKUP.items():
                                 if nome_csv in z.namelist():
                                     dados_extraidos = z.read(nome_csv)
                                     with open(caminho_real, "wb") as f: f.write(dados_extraidos)
-                        st.success("🔥 SUCESSO ABSOLUTO! Sistema restaurado!")
+                        st.success("🔥 SUCESSO! Sistema restaurado!")
                         time.sleep(1.5)
                         st.rerun()
                     except Exception as e: st.error(f"Erro: {e}")
-    else: st.error("🚨 ÁREA RESTRITA AO SUPER ADMINISTRADOR GERAL.")
+    else: st.error("🚨 ÁREA RESTRITA AO SUPER ADMINISTRADOR.")
 
 # ---------------- MÓDULO 12: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações":
@@ -775,4 +741,4 @@ elif menu == "⚙️ Configurações":
                 pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"]).to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
                 st.success("Caixa redefinido!")
                 st.rerun()
-    else: st.error("🚨 ÁREA RESTRITA AO SUPER ADMINISTRADOR GERAL.")
+    else: st.error("🚨 ÁREA RESTRITA AO SUPER ADMINISTRADOR.")
