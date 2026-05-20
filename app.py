@@ -68,7 +68,7 @@ inicializar_banco_de_dados()
 usuarios_df = pd.read_csv(ARQUIVO_USUARIOS, encoding='utf-8')
 
 # --- LISTA MESTRE DE PERMISSÕES ---
-PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "⚙️ Configurações"]
+PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "💾 Backup do Sistema", "⚙️ Configurações"]
 PERMISSOES_PADRAO = ["💸 Abrir Comanda (Vendas)", "📦 Estoque & Serviços"]
 
 # --- CONTROLE DE SESSÃO EM DISCO ---
@@ -102,7 +102,6 @@ if usuario_detectado:
     st.session_state["autenticado"] = True
     st.session_state["perfil"] = usuario_detectado
     
-    # Buscar permissões forçando letras minúsculas para não dar erro de digitação
     usuarios_df["Usuario_Lower"] = usuarios_df["Usuario"].str.strip().str.lower()
     u_linha = usuarios_df[usuarios_df["Usuario_Lower"] == usuario_detectado]
     
@@ -154,7 +153,6 @@ if not st.session_state["autenticado"]:
                     st.error("Usuário ou senha incorretos!")
     st.stop()
 
-# Estender o temporizador de sessão a cada clique
 salvar_sessao_em_disco(st.session_state["perfil"])
 
 # Carregar as tabelas operacionais
@@ -467,7 +465,7 @@ elif menu == "⚙️ Gerenciar Catálogo":
             if st.button("Atualizar Valor", type="primary"):
                 servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
                 servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-                st.success("🎉 Preço updated!")
+                st.success("🎉 Preço atualizado!")
                 time.sleep(1.2)
                 st.rerun()
     with aba_prod:
@@ -496,7 +494,7 @@ elif menu == "⚙️ Gerenciar Catálogo":
             item_linha = produtos_df[produtos_df["Nome do Produto"] == prod_editar]
             with col_ed1: ed_venda = st.number_input("Preço Venda:", value=float(item_linha["Preço de Venda"].values[0]))
             with col_ed2: ed_custo = st.number_input("Preço Custo:", value=float(item_linha["Preço de Custo"].values[0]))
-            with col_ed3: ed_estoque = st.number_input("Estoque Inicial:", value=int(item_linha["Estoque Inicial"].values[0]))
+            with col_ed3: ed_estoque = st.number_input("Ajustar Estoque:", value=int(item_linha["Estoque Inicial"].values[0]))
             with col_ed4: ed_comis = st.number_input("Comissão Fixa R$:", value=float(item_linha["Comissão Barbeiro (R$)"].values[0]))
             if st.button("Salvar Modificações", type="primary", use_container_width=True):
                 produtos_df.loc[produtos_df["Nome do Produto"] == prod_editar, ["Preço de Venda", "Preço de Custo", "Estoque Inicial", "Comissão Barbeiro (R$)"]] = [ed_venda, ed_custo, ed_estoque, ed_comis]
@@ -567,46 +565,37 @@ elif menu == "👤 Gerenciar Usuários":
 # ---------------- MÓDULO 9: PAINEL DE RELATÓRIOS ----------------
 elif menu == "📊 Painel de Relatórios":
     st.header("📊 Dashboard Financeiro - O Chefão")
-    
-    # Garantir formatação numérica correta
     vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
     gastos_df["Valor (R$)"] = pd.to_numeric(gastos_df["Valor (R$)"], errors='coerce').fillna(0)
     consumo_interno_df["Valor Total"] = pd.to_numeric(consumo_interno_df["Valor Total"], errors='coerce').fillna(0)
     consumo_interno_df["Quantidade"] = pd.to_numeric(consumo_interno_df["Quantidade"], errors='coerce').fillna(0)
     
-    # Criar colunas de Ano-Mês para fazer a filtragem segura por data
-    vendas_df["Ano_Mes"] = vendas_df["Data"].str[:7]  # Retorna 'YYYY-MM'
+    vendas_df["Ano_Mes"] = vendas_df["Data"].str[:7]
     gastos_df["Ano_Mes"] = gastos_df["Data"].str[:7]
     
-    # Montar lista de meses disponíveis no banco para o filtro dinâmico
     meses_disponiveis = sorted(list(set(vendas_df["Ano_Mes"].dropna().tolist() + gastos_df["Ano_Mes"].dropna().tolist())), reverse=True)
     mes_atual_string = datetime.now().strftime("%Y-%m")
     if mes_atual_string not in meses_disponiveis:
         meses_disponiveis.insert(0, mes_atual_string)
         
-    # --- FILTRO DO MÊS PRINCIPAL ---
     col_filtro, _ = st.columns([1, 3])
     with col_filtro:
         mes_selecionado = st.selectbox("📅 Selecione o Mês de Análise:", meses_disponiveis, index=0)
     
-    # Filtrar os dataframes operacionais com base no mês do topo
     vendas_filtradas = vendas_df[vendas_df["Ano_Mes"] == mes_selecionado]
     gastos_filtrados = gastos_df[gastos_df["Ano_Mes"] == mes_selecionado]
     
-    # Cálculos dos KPIs do mês
     faturamento_mes = vendas_filtradas["Valor Total"].sum()
     total_gastos_mes = gastos_filtrados["Valor (R$)"].sum()
     lucro_liquido_mes = faturamento_mes - total_gastos_mes
     
-    # Exibir métricas focadas no Mês
     c1, c2, c3 = st.columns(3)
     with c1: st.metric(f"💰 FATURAMENTO BRUTO ({mes_selecionado})", f"R$ {faturamento_mes:.2f}")
     with c2: st.metric(f"📉 TOTAL DE GASTOS ({mes_selecionado})", f"R$ {total_gastos_mes:.2f}")
     with c3: st.metric(f"🔥 LUCRO LÍQUIDO REAL ({mes_selecionado})", f"R$ {lucro_liquido_mes:.2f}")
     
     st.markdown("<br>", unsafe_allow_html=True)
-    
     tab_rel1, tab_rel2, tab_rel3 = st.tabs(["💸 Fechamento Semanal & Comissões", "🥤 Consumo Interno (Staff)", "📅 Visão Mensal Expandida"])
     
     with tab_rel1:
@@ -640,13 +629,10 @@ elif menu == "📊 Painel de Relatórios":
                 liquido_a_pagar_na_semana = total_ganho_bruto - valor_divida_consumo
                 
                 relatorio_comissao.append({
-                    "Profissional": nome_b, 
-                    "Qtd Serviços": int(total_cortes),
+                    "Profissional": nome_b, "Qtd Serviços": int(total_cortes),
                     "Comissão Serv.": f"R$ {valor_comissao_servico:.2f}",
-                    "Qtd Prod.": int(total_produtos_vendidos), 
-                    "Comissão Prod.": f"R$ {valor_comissao_produto:.2f}",
-                    "Ganho Bruto (A)": f"R$ {total_ganho_bruto:.2f}",
-                    "Dívida Consumo (B)": f"R$ {valor_divida_consumo:.2f}",
+                    "Qtd Prod.": int(total_produtos_vendidos), "Comissão Prod.": f"R$ {valor_comissao_produto:.2f}",
+                    "Ganho Bruto (A)": f"R$ {total_ganho_bruto:.2f}", "Dívida Consumo (B)": f"R$ {valor_divida_consumo:.2f}",
                     "PAGAMENTO LÍQUIDO (A - B)": f"R$ {liquido_a_pagar_na_semana:.2f}"
                 })
             
@@ -655,12 +641,9 @@ elif menu == "📊 Painel de Relatórios":
                 relatorio_comissao.append({
                     "Profissional": "admin (Gerente)", "Qtd Serviços": 0, "Comissão Serv.": "R$ 0.00",
                     "Qtd Prod.": 0, "Comissão Prod.": "R$ 0.00", "Ganho Bruto (A)": "R$ 0.00",
-                    "Dívida Consumo (B)": f"R$ {valor_divida_admin:.2f}",
-                    "PAGAMENTO LÍQUIDO (A - B)": f"R$ -{valor_divida_admin:.2f}"
+                    "Dívida Consumo (B)": f"R$ {valor_divida_admin:.2f}", "PAGAMENTO LÍQUIDO (A - B)": f"R$ -{valor_divida_admin:.2f}"
                 })
-                
             st.dataframe(pd.DataFrame(relatorio_comissao), use_container_width=True, hide_index=True)
-            st.caption("ℹ️ Nota: A folha de pagamentos reflete o saldo total acumulado na semana para fechamento direto com a equipe.")
 
     with tab_rel2:
         st.subheader("🥤 Lançamento de Consumo Interno (Staff)")
@@ -669,43 +652,32 @@ elif menu == "📊 Painel de Relatórios":
             with st.container(border=True):
                 st.subheader("📝 Registrar Nova Retirada")
                 lista_staff = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else []
-                if "admin" not in lista_staff:
-                    lista_staff.append("admin")
-                    
+                if "admin" not in lista_staff: lista_staff.append("admin")
                 quem_consumiu = st.selectbox("Quem consumiu o produto?", lista_staff)
                 lista_produtos_consumo = produtos_df["Nome do Produto"].tolist()
                 produto_retirado = st.selectbox("Selecione o Produto Retirado:", lista_produtos_consumo)
                 qtd_retirada = st.number_input("Quantidade Retirada:", min_value=1, value=1, step=1)
-                
                 preco_venda_prod = produtos_df[produtos_df["Nome do Produto"] == produto_retirado]["Preço de Venda"].values[0]
                 total_retirada = float(preco_venda_prod) * qtd_retirada
                 st.write(f"**Valor total a ser debitado:** R$ {total_retirada:.2f}")
-                
                 if st.button("💾 Gravar Consumo de Staff", type="primary", use_container_width=True):
-                    novo_consumo = pd.DataFrame([{
-                        "Data": datetime.now().strftime("%Y-%m-%d"),
-                        "Responsavel": quem_consumiu,
-                        "Item": produto_retirado,
-                        "Quantidade": qtd_retirada,
-                        "Valor Total": total_retirada
-                    }])
+                    novo_consumo = pd.DataFrame([{"Data": datetime.now().strftime("%Y-%m-%d"), "Responsavel": quem_consumiu, "Item": produto_retirado, "Quantidade": qtd_retirada, "Valor Total": total_retirada}])
                     consumo_interno_df = pd.concat([consumo_interno_df, novo_consumo], ignore_index=True)
                     consumo_interno_df.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
-                    st.success(f"✅ Consumo registrado para {quem_consumiu.upper()}!")
+                    st.success("✅ Consumo registrado!")
                     time.sleep(1.2)
                     st.rerun()
-                    
         with col_con2:
             st.subheader("📋 Extrato de Consumo da Equipe")
             if not consumo_interno_df.empty:
                 st.dataframe(consumo_interno_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
                 if st.button("🧹 Zerar Consumos Internos (Pós-Pagamento)", use_container_width=True):
                     pd.DataFrame(columns=["Data", "Responsavel", "Item", "Quantidade", "Valor Total"]).to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
-                    st.success("Extrato de consumo limpo para a próxima semana!")
+                    st.success("Extrato limpo!")
                     time.sleep(1.2)
                     st.rerun()
             else:
-                st.info("Nenhum consumo interno pendente nesta semana.")
+                st.info("Nenhum consumo interno pendente.")
 
     with tab_rel3:
         st.subheader(f"📊 Análise de Movimentação Focada em: {mes_selecionado}")
@@ -713,26 +685,65 @@ elif menu == "📊 Painel de Relatórios":
         with col_g1:
             st.write("**📈 Gráfico de Faturamento Diário do Mês**")
             if not vendas_filtradas.empty: 
-                dados_grafico_vendas = vendas_filtradas.groupby("Data")["Valor Total"].sum()
-                st.line_chart(dados_grafico_vendas)
-            else:
-                st.info("Sem vendas registradas neste mês.")
+                st.line_chart(vendas_filtradas.groupby("Data")["Valor Total"].sum())
+            else: st.info("Sem vendas registradas neste mês.")
         with col_g2:
             st.write("**💰 Faturamento por Categoria (Serviço vs Produto)**")
             if not vendas_filtradas.empty: 
-                dados_grafico_tipo = vendas_filtradas.groupby("Tipo")["Valor Total"].sum()
-                st.bar_chart(dados_grafico_tipo)
-            else:
-                st.info("Sem dados de faturamento.")
-                
+                st.bar_chart(vendas_filtradas.groupby("Tipo")["Valor Total"].sum())
+            else: st.info("Sem dados de faturamento.")
         st.markdown("<br>", unsafe_allow_html=True)
         tab_h1, tab_h2 = st.tabs([f"📋 Histórico de Vendas de {mes_selecionado}", f"📉 Histórico de Gastos de {mes_selecionado}"])
-        with tab_h1: 
-            st.dataframe(vendas_filtradas.drop(columns=["Ano_Mes"], errors='ignore').sort_index(ascending=False), use_container_width=True, hide_index=True)
-        with tab_h2: 
-            st.dataframe(gastos_filtrados.drop(columns=["Ano_Mes"], errors='ignore').sort_index(ascending=False), use_container_width=True, hide_index=True)
+        with tab_h1: st.dataframe(vendas_filtradas.drop(columns=["Ano_Mes"], errors='ignore').sort_index(ascending=False), use_container_width=True, hide_index=True)
+        with tab_h2: st.dataframe(gastos_filtrados.drop(columns=["Ano_Mes"], errors='ignore').sort_index(ascending=False), use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 10: CONFIGURAÇÕES ----------------
+# ---------------- MÓDULO 10: TELA DE BACKUP COMPLETA (NOVA) ----------------
+elif menu == "💾 Backup do Sistema" and st.session_state["perfil"] == "admin":
+    st.header("💾 Central de Backup e Restauração de Dados")
+    st.write("Use esta tela para baixar seus dados antes de fazer alterações técnicas no GitHub, ou para subir as tabelas antigas após o reset do servidor.")
+    
+    aba_export, aba_import = st.tabs(["📥 1. Baixar Dados (Exportar)", "📤 2. Subir Dados (Restaurar Backup)"])
+    
+    with aba_export:
+        st.subheader("Clique nos botões abaixo para fazer o download das tabelas vigentes:")
+        
+        # Função interna rápida para converter DF para CSV baixável
+        def converter_csv(df):
+            return df.to_csv(index=False).encode('utf-8')
+            
+        st.download_button("📥 Baixar Histórico de Vendas", data=converter_csv(vendas_df), file_name="vendas_backup.csv", mime="text/csv", use_container_width=True)
+        st.download_button("📥 Baixar Lista de Barbeiros", data=converter_csv(barbeiros_df), file_name="barbeiros_backup.csv", mime="text/csv", use_container_width=True)
+        st.download_button("📥 Baixar Membros Assinantes do Clube", data=converter_csv(assinaturas_df), file_name="assinaturas_backup.csv", mime="text/csv", use_container_width=True)
+        st.download_button("📥 Baixar Frequência de Assinaturas (Presenças)", data=converter_csv(presencas_df), file_name="presencas_backup.csv", mime="text/csv", use_container_width=True)
+        st.download_button("📥 Baixar Consumo Interno do Staff", data=converter_csv(consumo_interno_df), file_name="consumo_interno_backup.csv", mime="text/csv", use_container_width=True)
+        st.download_button("📥 Baixar Tabela Geral de Gastos", data=converter_csv(gastos_df), file_name="gastos_backup.csv", mime="text/csv", use_container_width=True)
+        st.caption("💡 Salve esses arquivos em uma pasta segura no seu computador ou telemóvel.")
+
+    with aba_import:
+        st.subheader("Suba o arquivo CSV de backup para restaurar as informações:")
+        tabela_destino = st.selectbox("Qual tabela deseja restaurar?", ["Histórico de Vendas", "Lista de Barbeiros", "Membros Assinantes", "Frequência de Assinaturas", "Consumo Interno do Staff", "Tabela Geral de Gastos"])
+        
+        arquivo_subido = st.file_uploader("Escolha o arquivo de backup correspondente (.csv):", type=["csv"])
+        
+        if arquivo_subido is not None:
+            if st.button("🚀 Injetar e Restaurar Backup", type="primary", use_container_width=True):
+                try:
+                    df_carregado = pd.read_csv(arquivo_subido, encoding='utf-8')
+                    
+                    if tabela_destino == "Histórico de Vendas": df_carregado.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
+                    elif tabela_destino == "Lista de Barbeiros": df_carregado.to_csv(ARQUIVO_BARBEIROS, index=False, encoding='utf-8')
+                    elif tabela_destino == "Membros Assinantes": df_carregado.to_csv(ARQUIVO_ASSINATURAS, index=False, encoding='utf-8')
+                    elif tabela_destino == "Frequência de Assinaturas": df_carregado.to_csv(ARQUIVO_PRESENCAS, index=False, encoding='utf-8')
+                    elif tabela_destino == "Consumo Interno do Staff": df_carregado.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
+                    elif tabela_destino == "Tabela Geral de Gastos": df_carregado.to_csv(ARQUIVO_GASTOS, index=False, encoding='utf-8')
+                    
+                    st.success(f"🔥 SUCESSO! Os dados da tabela '{tabela_destino}' foram restaurados com perfeição!")
+                    time.sleep(1.5)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao processar arquivo: {e}. Certifique-se de que escolheu o arquivo correto para a tabela selecionada.")
+
+# ---------------- MÓDULO 11: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações":
     st.header("Configurações Globais")
     with st.container(border=True):
