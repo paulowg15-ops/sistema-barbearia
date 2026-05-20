@@ -17,6 +17,7 @@ ARQUIVO_ASSINATURAS = "assinaturas.csv"
 ARQUIVO_PRESENCAS = "presencas.csv"
 ARQUIVO_USUARIOS = "usuarios.csv"
 ARQUIVO_SESSAO = "sessao_ativa.csv"
+ARQUIVO_CONSUMO_INTERNO = "consumo_interno.csv"
 
 def inicializar_banco_de_dados():
     if not os.path.exists(ARQUIVO_SERVICOS):
@@ -57,6 +58,9 @@ def inicializar_banco_de_dados():
 
     if not os.path.exists(ARQUIVO_SESSAO):
         pd.DataFrame(columns=["Usuario", "ValidoAte"]).to_csv(ARQUIVO_SESSAO, index=False, encoding='utf-8')
+
+    if not os.path.exists(ARQUIVO_CONSUMO_INTERNO):
+        pd.DataFrame(columns=["Data", "Responsavel", "Item", "Quantidade", "Valor Total"]).to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
 
 inicializar_banco_de_dados()
 
@@ -153,7 +157,7 @@ if not st.session_state["autenticado"]:
 # Estender o temporizador de sessão a cada clique
 salvar_sessao_em_disco(st.session_state["perfil"])
 
-# Carregar o resto do banco de dados
+# Carregar as tabelas operacionais
 servicos_df = pd.read_csv(ARQUIVO_SERVICOS, encoding='utf-8')
 produtos_df = pd.read_csv(ARQUIVO_PRODUTOS, encoding='utf-8')
 vendas_df = pd.read_csv(ARQUIVO_VENDAS, encoding='utf-8')
@@ -161,13 +165,13 @@ gastos_df = pd.read_csv(ARQUIVO_GASTOS, encoding='utf-8')
 barbeiros_df = pd.read_csv(ARQUIVO_BARBEIROS, encoding='utf-8')
 assinaturas_df = pd.read_csv(ARQUIVO_ASSINATURAS, encoding='utf-8')
 presencas_df = pd.read_csv(ARQUIVO_PRESENCAS, encoding='utf-8')
+consumo_interno_df = pd.read_csv(ARQUIVO_CONSUMO_INTERNO, encoding='utf-8')
 
 # --- CONFIGURAÇÃO DA BARRA LATERAL ---
 st.sidebar.title("✂️ O Chefão")
 st.sidebar.write(f"Conectado como: **{st.session_state['perfil'].upper()}**")
 st.sidebar.markdown("---")
 
-# Garante que a lista de menus nunca esteja vazia para evitar travar o st.sidebar.radio
 menus_validos = st.session_state["permissoes_usuario"] if st.session_state["permissoes_usuario"] else PERMISSOES_PADRAO
 menu = st.sidebar.radio("Navegação:", menus_validos)
 
@@ -419,9 +423,18 @@ elif menu == "📦 Estoque & Serviços":
     st.header("📦 Monitor do Estoque Conveniência e Serviços")
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
     produtos_calculados = produtos_df.copy()
+    
+    # Calcular vendas externas
     qtd_vendida_map = vendas_df[vendas_df["Tipo"] == "Produto"].groupby("Item")["Quantidade"].sum().to_dict()
+    
+    # Calcular também consumo interno para abater do estoque físico real
+    consumo_interno_df["Quantidade"] = pd.to_numeric(consumo_interno_df["Quantidade"], errors='coerce').fillna(0)
+    qtd_consumo_map = consumo_interno_df.groupby("Item")["Quantidade"].sum().to_dict()
+    
     produtos_calculados["Quantidade Vendida"] = produtos_calculados["Nome do Produto"].map(qtd_vendida_map).fillna(0).astype(int)
-    produtos_calculados["Estoque Atual"] = produtos_calculados["Estoque Inicial"] - produtos_calculados["Quantidade Vendida"]
+    produtos_calculados["Consumo Staff"] = produtos_calculados["Nome do Produto"].map(qtd_consumo_map).fillna(0).astype(int)
+    produtos_calculados["Estoque Atual"] = produtos_calculados["Estoque Inicial"] - produtos_calculados["Quantidade Vendida"] - produtos_calculados["Consumo Staff"]
+    
     with st.container(border=True):
         st.subheader("📦 Nível de Prateleira (Produtos)")
         st.dataframe(produtos_calculados, use_container_width=True, hide_index=True)
@@ -490,7 +503,7 @@ elif menu == "⚙️ Gerenciar Catálogo":
             if st.button("Salvar Modificações", type="primary", use_container_width=True):
                 produtos_df.loc[produtos_df["Nome do Produto"] == prod_editar, ["Preço de Venda", "Preço de Custo", "Estoque Inicial", "Comissão Barbeiro (R$)"]] = [ed_venda, ed_custo, ed_estoque, ed_comis]
                 produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
-                st.success("🔥 Informações updated!")
+                st.success("🎉 Informações atualizadas!")
                 time.sleep(1.2)
                 st.rerun()
 
@@ -556,30 +569,45 @@ elif menu == "👤 Gerenciar Usuários":
 # ---------------- MÓDULO 9: PAINEL DE RELATÓRIOS ----------------
 elif menu == "📊 Painel de Relatórios":
     st.header("📊 Dashboard Financeiro - O Chefão")
+    
     vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
     gastos_df["Valor (R$)"] = pd.to_numeric(gastos_df["Valor (R$)"], errors='coerce').fillna(0)
+    consumo_interno_df["Valor Total"] = pd.to_numeric(consumo_interno_df["Valor Total"], errors='coerce').fillna(0)
+    consumo_interno_df["Quantidade"] = pd.to_numeric(consumo_interno_df["Quantidade"], errors='coerce').fillna(0)
+    
     faturamento = vendas_df["Valor Total"].sum()
     total_gastos = gastos_df["Valor (R$)"].sum()
     lucro_liquido = faturamento - total_gastos
+    
     c1, c2, c3 = st.columns(3)
     with c1: st.metric("💰 FATURAMENTO BRUTO", f"R$ {faturamento:.2f}")
     with c2: st.metric("📉 TOTAL DE GASTOS", f"R$ {total_gastos:.2f}")
     with c3: st.metric("🔥 LUCRO LÍQUIDO REAL", f"R$ {lucro_liquido:.2f}")
+    
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.container(border=True):
-        st.subheader("💸 Tabela Unificada de Comissões Semanal")
+    
+    tab_rel1, tab_rel2, tab_rel3 = st.tabs(["💸 Fechamento Semanal & Comissões", "🥤 Consumo Interno (Staff)", "📅 Históricos Completos"])
+    
+    with tab_rel1:
+        st.subheader("💸 Tabela Unificada de Comissões com Desconto de Consumo")
         if not barbeiros_df.empty:
             relatorio_comissao = []
             mapa_comissao_produto = produtos_df.set_index("Nome do Produto")["Comissão Barbeiro (R$)"].to_dict()
+            
+            # Mapear consumo total acumulado para descontar por pessoa
+            mapa_desconto_consumo = consumo_interno_df.groupby("Responsavel")["Valor Total"].sum().to_dict()
+            
             for _, b in barbeiros_df.iterrows():
                 nome_b = b["Nome"]
                 porcentagem_servico = b["Comissão (%)"]
                 vendas_do_barbeiro = vendas_df[vendas_df["Barbeiro"] == nome_b]
+                
                 servicos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Serviço"]
                 faturamento_servicos = servicos_b["Valor Total"].sum()
                 total_cortes = servicos_b["Quantidade"].sum()
                 valor_comissao_servico = faturamento_servicos * (porcentagem_servico / 100.0)
+                
                 produtos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Produto"]
                 valor_comissao_produto = 0.0
                 total_produtos_vendidos = produtos_b["Quantidade"].sum()
@@ -588,26 +616,101 @@ elif menu == "📊 Painel de Relatórios":
                     qtd_p = venda_p["Quantidade"]
                     comissao_unitaria_p = mapa_comissao_produto.get(nome_p, 0.0)
                     valor_comissao_produto += float(comissao_unitaria_p) * float(qtd_p)
-                total_geral_a_pagar = valor_comissao_servico + valor_comissao_produto
+                
+                # Calcular totais e descontos do consumo interno
+                total_ganho_bruto = valor_comissao_servico + valor_comissao_produto
+                valor_divida_consumo = float(mapa_desconto_consumo.get(nome_b, 0.0))
+                liquido_a_pagar_na_semana = total_ganho_bruto - valor_divida_consumo
+                
                 relatorio_comissao.append({
-                    "Barbeiro": nome_b, "Qtd Serviços": int(total_cortes),
-                    "Comissão Serviços": f"R$ {valor_comissao_servico:.2f} ({int(porcentagem_servico)}%)",
-                    "Qtd Produtos": int(total_produtos_vendidos), "Comissão Produtos": f"R$ {valor_comissao_produto:.2f}",
-                    "TOTAL A PAGAR DE COMISSÃO": f"R$ {total_geral_a_pagar:.2f}"
+                    "Profissional": nome_b, 
+                    "Qtd Serviços": int(total_cortes),
+                    "Comissão Serv.": f"R$ {valor_comissao_servico:.2f}",
+                    "Qtd Prod.": int(total_produtos_vendidos), 
+                    "Comissão Prod.": f"R$ {valor_comissao_produto:.2f}",
+                    "Ganho Bruto (A)": f"R$ {total_ganho_bruto:.2f}",
+                    "Dívida Consumo (B)": f"R$ {valor_divida_consumo:.2f}",
+                    "PAGAMENTO LÍQUIDO (A - B)": f"R$ {liquido_a_pagar_na_semana:.2f}"
                 })
+            
+            # Adicionar o Gerente/Admin de forma avulsa para controle se houver consumo dele
+            valor_divida_admin = float(mapa_desconto_consumo.get("admin", 0.0))
+            if valor_divida_admin > 0:
+                relatorio_comissao.append({
+                    "Profissional": "admin (Gerente)", "Qtd Serviços": 0, "Comissão Serv.": "R$ 0.00",
+                    "Qtd Prod.": 0, "Comissão Prod.": "R$ 0.00", "Ganho Bruto (A)": "R$ 0.00",
+                    "Dívida Consumo (B)": f"R$ {valor_divida_admin:.2f}",
+                    "PAGAMENTO LÍQUIDO (A - B)": f"R$ -{valor_divida_admin:.2f}"
+                })
+                
             st.dataframe(pd.DataFrame(relatorio_comissao), use_container_width=True, hide_index=True)
-    st.markdown("<br>", unsafe_allow_html=True)
-    col_g1, col_g2 = st.columns(2, gap="large")
-    with col_g1:
-        st.subheader("📅 Faturamento Diário")
-        if not vendas_df.empty: st.line_chart(vendas_df.groupby("Data")["Valor Total"].sum())
-    with col_g2:
-        st.subheader("💰 Divisão Balcão (Serviços vs Produtos)")
-        if not vendas_df.empty: st.bar_chart(vendas_df.groupby("Tipo")["Valor Total"].sum())
-    st.markdown("<br>", unsafe_allow_html=True)
-    tab1, tab2 = st.tabs(["📋 Histórico de Vendas", "📉 Histórico de Gastos"])
-    with tab1: st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
-    with tab2: st.dataframe(gastos_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
+            st.caption("ℹ️ O valor da 'Dívida Consumo' é atualizado em tempo real assim que novos produtos são retirados na aba de Consumo Interno.")
+
+    with tab_rel2:
+        st.subheader("🥤 Lançamento de Consumo Interno (Barbeiros e Gerente)")
+        st.write("Use esta seção para registrar quando a própria equipe consumir água, refrigerantes ou outros produtos.")
+        
+        col_con1, col_con2 = st.columns([1, 1], gap="large")
+        with col_con1:
+            with st.container(border=True):
+                st.subheader("📝 Registrar Nova Retirada")
+                
+                # Montar lista de pessoas que podem consumir (Barbeiros + Admin)
+                lista_staff = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else []
+                if "admin" not in lista_staff:
+                    lista_staff.append("admin")
+                    
+                quem_consumiu = st.selectbox("Quem consumiu o produto?", lista_staff)
+                
+                # Filtrar apenas produtos para consumo
+                lista_produtos_consumo = produtos_df["Nome do Produto"].tolist()
+                produto_retirado = st.selectbox("Selecione o Produto Retirado:", lista_produtos_consumo)
+                
+                qtd_retirada = st.number_input("Quantidade Retirada:", min_value=1, value=1, step=1)
+                
+                preco_venda_prod = produtos_df[produtos_df["Nome do Produto"] == produto_retirado]["Preço de Venda"].values[0]
+                total_retirada = float(preco_venda_prod) * qtd_retirada
+                
+                st.write(f"**Valor total a ser debitado:** R$ {total_retirada:.2f}")
+                
+                if st.button("💾 Gravar Consumo de Staff", type="primary", use_container_width=True):
+                    novo_consumo = pd.DataFrame([{
+                        "Data": datetime.now().strftime("%Y-%m-%d"),
+                        "Responsavel": quem_consumiu,
+                        "Item": produto_retirado,
+                        "Quantidade": qtd_retirada,
+                        "Valor Total": total_retirada
+                    }])
+                    consumo_interno_df = pd.concat([consumo_interno_df, novo_consumo], ignore_index=True)
+                    consumo_interno_df.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
+                    st.success(f"✅ Consumo registrado para {quem_consumiu.upper()}!")
+                    time.sleep(1.2)
+                    st.rerun()
+                    
+        with col_con2:
+            st.subheader("📋 Extrato de Consumo do Staff Atual")
+            if not consumo_interno_df.empty:
+                st.dataframe(consumo_interno_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
+                if st.button("🧹 Zerar Consumos Internos (Pós-Pagamento)", use_container_width=True):
+                    pd.DataFrame(columns=["Data", "Responsavel", "Item", "Quantidade", "Valor Total"]).to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
+                    st.success("Extrato de consumo limpo para a próxima semana!")
+                    time.sleep(1.2)
+                    st.rerun()
+            else:
+                st.info("Nenhum consumo interno pendente nesta semana.")
+
+    with tab_rel3:
+        col_g1, col_g2 = st.columns(2, gap="large")
+        with col_g1:
+            st.subheader("📅 Faturamento Diário")
+            if not vendas_df.empty: st.line_chart(vendas_df.groupby("Data")["Valor Total"].sum())
+        with col_g2:
+            st.subheader("💰 Divisão Balcão (Serviços vs Produtos)")
+            if not vendas_df.empty: st.bar_chart(vendas_df.groupby("Tipo")["Valor Total"].sum())
+        st.markdown("<br>", unsafe_allow_html=True)
+        tab1, tab2 = st.tabs(["📋 Histórico Completo de Vendas", "📉 Histórico de Gastos Gerais"])
+        with tab1: st.dataframe(vendas_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
+        with tab2: st.dataframe(gastos_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
 
 # ---------------- MÓDULO 10: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações":
