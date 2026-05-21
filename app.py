@@ -164,7 +164,7 @@ class PDFRelatorio(FPDF):
         self.set_font("Arial", "I", 8)
         self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
 
-# ---------------- MÓDULO 1: COMANDA ELETRÔNICA (ATUALIZADO COM DATA RETROATIVA PARA ADMIN) ----------------
+# ---------------- MÓDULO 1: COMANDA ELETRÔNICA ----------------
 if menu == "💸 Abrir Comanda (Vendas)":
     st.header("📋 Caixa e Comanda Eletrônica - O Chefão")
     col_com1, col_com2 = st.columns([1, 1], gap="large")
@@ -213,8 +213,6 @@ if menu == "💸 Abrir Comanda (Vendas)":
                     barbeiro_venda = st.selectbox("Barbeiro Executor:", lista_barbeiros_sistema)
                 with c_f2: 
                     cliente = st.text_input("Identificação do Cliente:", value="Avulso")
-                    
-                    # TRAVA EXCLUSIVA OPÇÃO 2: Apenas admin altera a data, gerente fica fixo em hoje
                     if st.session_state["perfil"] == "admin":
                         data_venda_dt = st.date_input("📅 Data do Lançamento:", datetime.now())
                         data_final_comanda = data_venda_dt.strftime("%Y-%m-%d")
@@ -232,7 +230,7 @@ if menu == "💸 Abrir Comanda (Vendas)":
                     vendas_df = pd.concat([vendas_df, pd.DataFrame(novas_linhas)], ignore_index=True)
                     vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
                     st.session_state["carrinho_comanda"] = []
-                    st.success(f"✅ Venda de R$ {valor_total_comanda:.2f} lançada para o dia {data_final_comanda}!")
+                    st.success(f"✅ Venda de R$ {valor_total_comanda:.2f} lançada!")
                     time.sleep(1.2)
                     st.rerun()
                 if st.button("🗑️ Esvaziar Comanda Completa", use_container_width=True):
@@ -376,15 +374,25 @@ elif menu == "✏️ Corrigir Lançamentos":
             else: st.info("Nenhum fechamento registrado no sistema.")
         else: st.error("🚫 Acesso Negado: Apenas o Admin pode anular um fechamento.")
 
-# ---------------- MÓDULO 5: FECHAMENTO DE DIA ----------------
+# ---------------- MÓDULO 5: FECHAMENTO DE DIA (ATUALIZADO COM DATA RETROATIVA PARA ADMIN) ----------------
 elif menu == "🔒 Fechamento de Dia":
     st.header("🔒 Fechamento de Caixa Diário - Auditoria")
     tab_f_1, tab_f_2 = st.tabs(["📝 Realizar Fechamento de Hoje", "📋 Histórico de Auditoria"])
-    data_hoje_f = datetime.now().strftime("%Y-%m-%d")
+    
+    # TRAVA DE SEGURANÇA NA DATA DO FECHAMENTO: Admin escolhe, gerente trava em hoje
+    if st.session_state["perfil"] == "admin":
+        data_fech_dt = st.date_input("📅 Data do Caixa Fechado:", datetime.now())
+        data_final_fechamento = data_fech_dt.strftime("%Y-%m-%d")
+    else:
+        data_final_fechamento = datetime.now().strftime("%Y-%m-%d")
+        st.info(f"Focando fechamento para a data de hoje: **{data_final_fechamento}**")
+        
     with tab_f_1:
         vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
-        vendas_hoje = vendas_df[vendas_df["Data"] == data_hoje_f]
-        total_sistema_hoje = vendas_hoje["Valor Total"].sum()
+        # Calcula com base na data final escolhida (seja hoje ou a data retroativa que o Admin colocou)
+        vendas_do_dia = vendas_df[vendas_df["Data"] == data_final_fechamento]
+        total_sistema_hoje = vendas_do_dia["Valor Total"].sum()
+        
         col_fe1, col_fe2 = st.columns(2, gap="large")
         with col_fe1:
             with st.container(border=True):
@@ -398,16 +406,16 @@ elif menu == "🔒 Fechamento de Dia":
                 elif diferenca_caixa > 0: status_caixa = f"🔵 Sobrou R$ {diferenca_caixa:.2f}"
                 else: status_caixa = f"🔴 Quebra de Caixa (Faltou R$ {abs(diferenca_caixa):.2f})"
                 if st.button("🔒 Confirmar Fechamento", type="primary", use_container_width=True):
-                    novo_f_df = pd.DataFrame([{"Data": data_hoje_f, "Usuario": st.session_state["perfil"], "Dinheiro Real": real_dinheiro, "Pix Real": real_pix, "Cartao Real": real_cartao, "Total Real": total_real_calculado, "Total Sistema": total_sistema_hoje, "Diferenca": diferenca_caixa, "Status": status_caixa, "Observacoes": obs_fechamento}])
+                    novo_f_df = pd.DataFrame([{"Data": data_final_fechamento, "Usuario": st.session_state["perfil"], "Dinheiro Real": real_dinheiro, "Pix Real": real_pix, "Cartao Real": real_cartao, "Total Real": total_real_calculado, "Total Sistema": total_sistema_hoje, "Diferenca": diferenca_caixa, "Status": status_caixa, "Observacoes": obs_fechamento}])
                     fechamentos_df = pd.concat([fechamentos_df, novo_f_df], ignore_index=True)
                     fechamentos_df.to_csv(ARQUIVO_FECHAMENTOS, index=False, encoding='utf-8')
-                    st.success("🔒 Caixa fechado!")
+                    st.success(f"🔒 Caixa do dia {data_final_fechamento} fechado com sucesso!")
                     time.sleep(1.2)
                     st.rerun()
         with col_fe2:
             with st.container(border=True):
-                st.metric("📱 Esperado no Sistema", f"R$ {total_sistema_hoje:.2f}")
-                st.metric("💵 Contado na Realidade", f"R$ {total_real_calculado:.2f}")
+                st.metric(f"📱 Esperado no Sistema ({data_final_fechamento})", f"R$ {total_sistema_hoje:.2f}")
+                st.metric(f"💵 Contado na Realidade", f"R$ {total_real_calculado:.2f}")
                 st.metric("📊 Status", status_caixa)
     with tab_f_2:
         if not fechamentos_df.empty: st.dataframe(fechamentos_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
