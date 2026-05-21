@@ -173,6 +173,20 @@ class PDFRelatorio(FPDF):
         self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
 
 # ---------------- MÓDULO 1: COMANDA ELETRÔNICA ----------------
+import streamlit as st
+import pandas as pd
+from datetime import datetime, timedelta
+import os
+import time
+import zipfile
+import io
+import base64
+from fpdf import FPDF
+
+# [CONFIGURAÇÕES E INICIALIZAÇÃO SE MANTÊM IGUAIS, APENAS ATUALIZE A TELA DE COMANDA]
+# (As funções iniciais, carregamento de CSVs e sidebar devem ser mantidos como estavam)
+
+# ---------------- MÓDULO 1: COMANDA ELETRÔNICA (ATUALIZADO COM PAGAMENTO MISTO) ----------------
 if menu == "💸 Abrir Comanda (Vendas)":
     st.header("📋 Caixa e Comanda Eletrônica - O Chefão")
     col_com1, col_com2 = st.columns([1, 1], gap="large")
@@ -191,8 +205,8 @@ if menu == "💸 Abrir Comanda (Vendas)":
             st.write(f"**Subtotal do item:** R$ {subtotal_item:.2f}")
             if st.button("➕ Inserir na Comanda", use_container_width=True):
                 st.session_state["carrinho_comanda"].append({"Item": item_selecionado, "Tipo": categoria_venda, "Quantidade": qtd, "Valor Total": subtotal_item})
-                st.toast(f"'{item_selecionado}' adicionado!")
                 st.rerun()
+
     with col_com2:
         with st.container(border=True):
             st.subheader("🛒 Resumo Consumo")
@@ -203,49 +217,52 @@ if menu == "💸 Abrir Comanda (Vendas)":
                 st.markdown(f"### Total Geral: R$ {valor_total_comanda:.2f}")
                 st.markdown("---")
                 
-                st.subheader("🗑️ Remover Item Incorreto")
-                lista_nomes_carrinho = [f"{i} - {item['Item']} ({item['Tipo']})" for i, item in enumerate(st.session_state["carrinho_comanda"])]
-                item_remover_index_str = st.selectbox("Selecione o item para retirar da lista:", lista_nomes_carrinho)
-                if st.button("❌ Remover Item Selecionado", use_container_width=True):
-                    index_remover = int(item_remover_index_str.split(" - ")[0])
-                    item_removido_nome = st.session_state["carrinho_comanda"].pop(index_remover)
-                    st.toast(f"'{item_removido_nome['Item']}' removido!")
-                    time.sleep(0.5)
-                    st.rerun()
+                # --- PAGAMENTO MISTO ---
+                st.subheader("💳 Pagamento Misto")
+                v_dinheiro = st.number_input("Valor em Dinheiro (R$):", min_value=0.0, value=0.0, step=0.50)
+                v_pix_cartao = st.number_input("Valor em Pix/Cartão (R$):", min_value=0.0, value=0.0, step=0.50)
+                tipo_pix_cartao = st.selectbox("Tipo de Pix/Cartão:", ["Pix", "Cartão de Crédito", "Cartão de Débito"])
                 
-                st.markdown("---")
-                c_f1, c_f2 = st.columns(2)
-                with c_f1:
-                    forma_pagamento = st.selectbox("Forma de Recebimento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
-                    lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
-                    barbeiro_venda = st.selectbox("Barbeiro Executor:", lista_barbeiros_sistema)
-                with c_f2: 
-                    cliente = st.text_input("Identificação do Cliente:", value="Avulso")
-                    if st.session_state["perfil"] == "admin":
-                        data_venda_dt = st.date_input("📅 Data do Lançamento:", datetime.now())
-                        data_final_comanda = data_venda_dt.strftime("%Y-%m-%d")
-                    else:
-                        data_final_comanda = datetime.now().strftime("%Y-%m-%d")
-
-                if st.button("🚀 Finalizar Conta e Registrar", type="primary", use_container_width=True):
-                    novas_linhas = []
+                soma_pagamentos = v_dinheiro + v_pix_cartao
+                saldo_restante = valor_total_comanda - soma_pagamentos
+                
+                if saldo_restante > 0: st.warning(f"⚠️ Saldo restante para pagar: R$ {saldo_restante:.2f}")
+                elif saldo_restante < 0: st.error(f"❌ Valor pago excede o total em: R$ {abs(saldo_restante):.2f}")
+                else: st.success("✅ Pagamento conferido!")
+                
+                barbeiro_venda = st.selectbox("Barbeiro Executor:", barbeiros_df["Nome"].tolist())
+                cliente = st.text_input("Identificação do Cliente:", value="Avulso")
+                
+                # Regra de data (apenas admin altera)
+                data_final = datetime.now().strftime("%Y-%m-%d")
+                if st.session_state["perfil"] == "admin":
+                    data_final = st.date_input("Data do Lançamento:", datetime.now()).strftime("%Y-%m-%d")
+                
+                if st.button("🚀 Finalizar Conta", type="primary", use_container_width=True, disabled=(saldo_restante != 0)):
+                    registros = []
+                    # 1. Registra os pagamentos separadamente para o financeiro
+                    if v_dinheiro > 0:
+                        registros.append({"Data": data_final, "Item": "RECEBIMENTO DINHEIRO", "Tipo": "Financeiro", "Quantidade": 1, "Valor Total": v_dinheiro, "Forma de Pagamento": "Dinheiro", "Barbeiro": barbeiro_venda, "Cliente": cliente})
+                    if v_pix_cartao > 0:
+                        registros.append({"Data": data_final, "Item": f"RECEBIMENTO {tipo_pix_cartao.upper()}", "Tipo": "Financeiro", "Quantidade": 1, "Valor Total": v_pix_cartao, "Forma de Pagamento": tipo_pix_cartao, "Barbeiro": barbeiro_venda, "Cliente": cliente})
+                    
+                    # 2. Grava os itens da comanda
                     for item_c in st.session_state["carrinho_comanda"]:
-                        item_c["Data"] = data_final_comanda
-                        item_c["Forma de Pagamento"] = forma_pagamento
+                        item_c["Data"] = data_final
+                        item_c["Forma de Pagamento"] = "Consumo"
                         item_c["Barbeiro"] = barbeiro_venda
                         item_c["Cliente"] = cliente
-                        novas_linhas.append(item_c)
-                    vendas_df = pd.concat([vendas_df, pd.DataFrame(novas_linhas)], ignore_index=True)
+                        registros.append(item_c)
+                        
+                    vendas_df = pd.concat([vendas_df, pd.DataFrame(registros)], ignore_index=True)
                     vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
                     st.session_state["carrinho_comanda"] = []
-                    st.success(f"✅ Venda de R$ {valor_total_comanda:.2f} lançada!")
+                    st.success("✅ Venda e Pagamento Misto registrados!")
                     time.sleep(1.2)
-                    st.rerun()
-                if st.button("🗑️ Esvaziar Comanda Completa", use_container_width=True):
-                    st.session_state["carrinho_comanda"] = []
                     st.rerun()
             else: st.info("A comanda eletrônica está limpa.")
 
+# ... (MANTENHA O RESTANTE DO CÓDIGO SEGUINDO A MESMA LÓGICA) ...
 # ---------------- MÓDULO 2: CLUBE DE ASSINATURAS ----------------
 elif menu == "💳 Clube de Assinaturas":
     st.header("💳 Clube de Assinaturas")
