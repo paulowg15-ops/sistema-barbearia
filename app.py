@@ -7,7 +7,7 @@ import zipfile
 import io
 import base64
 
-# Tenta importar fpdf para geração de relatórios. Se não houver, avisa para adicionar no requirements.txt
+# Força a instalação e uso estrito da biblioteca fpdf2 (moderna)
 try:
     from fpdf import FPDF
 except ImportError:
@@ -92,7 +92,7 @@ def validar_token(token):
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
     st.session_state["perfil"] = None
-    st.session_state["permissoes_usuario"] = PERMISSOES_PADRAO
+    st.session_state["permissoes_usuario"] = PERMISSORE_PADRAO if "PERMISSORE_PADRAO" in locals() else PERMISSOES_PADRAO
     st.session_state["carrinho_comanda"] = []
 
 # Checagem automática do F5
@@ -155,22 +155,19 @@ if st.sidebar.button("🚪 Sair com Segurança", use_container_width=True):
     st.query_params.clear()
     st.rerun()
 
-# --- CLASSE AUXILIAR DO PDF ---
+# --- CLASSE AUXILIAR DO PDF (CORRIGIDA E PADRONIZADA) ---
 class PDFRelatorio(FPDF):
     def header(self):
         self.set_font("Arial", "B", 16)
-        self.set_text_color(44, 62, 80)
-        self.cell(0, 10, "O CHEFAO BARBEARIA E CONVENIENCIA", ln=True, align="C")
+        self.cell(0, 10, "O CHEFAO BARBEARIA E CONVENIENCIA", ln=1, align="C")
         self.set_font("Arial", "I", 10)
-        self.set_text_color(127, 140, 141)
-        self.cell(0, 5, "Relatorio Oficial de Movimentacao de Caixa e Auditoria", ln=True, align="C")
+        self.cell(0, 5, "Relatorio Oficial de Movimentacao de Caixa e Auditoria", ln=1, align="C")
         self.ln(5)
         self.line(10, 26, 200, 26)
 
     def footer(self):
         self.set_y(-15)
         self.set_font("Arial", "I", 8)
-        self.set_text_color(127, 140, 141)
         self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
 
 # ---------------- MÓDULO 1: COMANDA ELETRÔNICA ----------------
@@ -632,7 +629,7 @@ elif menu == "👤 Gerenciar Usuários":
                             usuarios_df.loc[usuarios_df["Usuario"] == usuario_selecionado, "Senha"] = nova_senha_user
                             usuarios_df.loc[usuarios_df["Usuario"] == usuario_selecionado, "Permissoes"] = "|".join(lista_novas_p)
                             usuarios_df.to_csv(ARQUIVO_USUARIOS, index=False, encoding='utf-8')
-                            st.success("⚙️ Perfil atualizado!")
+                            st.success("⚙️ Perfil updated!")
                             time.sleep(1.2)
                             st.rerun()
                 with col_ed_u2:
@@ -714,7 +711,7 @@ elif menu == "📊 Painel de Relatórios":
     with tab_rel3:
         if not vendas_filtradas.empty: st.line_chart(vendas_filtradas.groupby("Data")["Valor Total"].sum())
 
-# ---------------- MÓDULO 11: EMISSÃO DE RELATÓRIOS OFICIAIS EM PDF (NOVO) ----------------
+# ---------------- MÓDULO 11: EMISSÃO DE RELATÓRIOS OFICIAIS EM PDF (CORRIGIDO) ----------------
 elif menu == "📄 Emitir Relatórios":
     st.header("📄 Emissão de Relatórios Oficiais (PDF)")
     st.write("Filtre o período comercial desejado para gerar e exportar o documento consolidado do caixa.")
@@ -739,7 +736,7 @@ elif menu == "📄 Emitir Relatórios":
         st.markdown("---")
         
         if st.button("🧱 Processar e Compilar Relatório PDF", type="primary", use_container_width=True):
-            # Filtragem Cirúrgica dos DataFrames com tratamento rigoroso de texto/datas
+            # Filtragem Cirúrgica dos DataFrames
             vendas_df["Data"] = vendas_df["Data"].astype(str)
             v_filtradas = vendas_df[(vendas_df["Data"] >= data_inicio) & (vendas_df["Data"] <= data_fim)]
             
@@ -749,72 +746,72 @@ elif menu == "📄 Emitir Relatórios":
             fechamentos_df["Data"] = fechamentos_df["Data"].astype(str)
             f_filtrados = fechamentos_df[(fechamentos_df["Data"] >= data_inicio) & (fechamentos_df["Data"] <= data_fim)]
 
-            # Cálculos consolidados para exibição estruturada no documento
+            # Cálculos consolidados para exibição estruturada
             faturamento_tot = pd.to_numeric(v_filtradas["Valor Total"], errors='coerce').sum()
             gastos_tot = pd.to_numeric(g_filtrados["Valor (R$)"], errors='coerce').sum()
             saldo_liq = faturamento_tot - gastos_tot
             
-            # Montagem estruturada do PDF utilizando FPDF2
+            # Montagem do PDF utilizando FPDF2
             pdf = PDFRelatorio()
             pdf.add_page()
-            pdf.set_margins(10, 10, 10)
             
             # Bloco 1: Informações Gerais do Período
             pdf.set_font("Arial", "B", 12)
-            pdf.cell(0, 8, f"Periodo Auditado: {data_inicio} ate {data_fim}", ln=True)
+            pdf.cell(0, 8, f"Periodo Auditado: {data_inicio} ate {data_fim}", ln=1)
             pdf.set_font("Arial", "", 10)
-            pdf.cell(0, 6, f"Emitido por: {st.session_state['perfil'].upper()} em {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True)
-            pdf.ln(4)
+            pdf.cell(0, 6, f"Emitido por: {st.session_state['perfil'].upper()} em {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=1)
+            pdf.ln()
             
             # Bloco 2: Resumo Financeiro
             pdf.set_font("Arial", "B", 11)
             pdf.set_fill_color(240, 240, 240)
-            pdf.cell(0, 7, "1. RESUMO FINANCEIRO GERAL", ln=True, fill=True)
+            pdf.cell(0, 7, "1. RESUMO FINANCEIRO GERAL", ln=1, fill=True)
             pdf.set_font("Arial", "", 10)
             pdf.cell(95, 6, f" Faturamento Bruto Balcao: R$ {faturamento_tot:.2f}", border=1)
-            pdf.cell(95, 6, f" Total de Saidas (Gastos): R$ {gastos_tot:.2f}", border=1, ln=True)
+            pdf.cell(95, 6, f" Total de Saidas (Gastos): R$ {gastos_tot:.2f}", border=1, ln=1)
             pdf.set_font("Arial", "B", 10)
-            pdf.cell(190, 6, f" Saldo Liquido do Periodo: R$ {saldo_liq:.2f}", border=1, ln=True)
-            pdf.ln(5)
+            pdf.cell(190, 6, f" Saldo Liquido do Periodo: R$ {saldo_liq:.2f}", border=1, ln=1)
+            pdf.ln()
             
             # Bloco 3: Movimentação de Atendimentos e Categorias
             pdf.set_font("Arial", "B", 11)
-            pdf.cell(0, 7, "2. DETALHAMENTO POR CATEGORIA DE ATENDIMENTO", ln=True, fill=True)
+            pdf.cell(0, 7, "2. DETALHAMENTO POR CATEGORIA DE ATENDIMENTO", ln=1, fill=True)
             pdf.set_font("Arial", "", 10)
             servicos_tot = v_filtradas[v_filtradas["Tipo"] == "Serviço"]["Valor Total"].sum()
             produtos_tot = v_filtradas[v_filtradas["Tipo"] == "Produto"]["Valor Total"].sum()
             pdf.cell(95, 6, f" Faturamento com Servicos (Barbearia): R$ {servicos_tot:.2f}", border=1)
-            pdf.cell(95, 6, f" Faturamento com Produtos (Conveniencia): R$ {produtos_tot:.2f}", border=1, ln=True)
-            pdf.ln(5)
+            pdf.cell(95, 6, f" Faturamento com Produtos (Conveniencia): R$ {produtos_tot:.2f}", border=1, ln=1)
+            pdf.ln()
             
             # Bloco 4: Divisão por Meios de Recebimento
             pdf.set_font("Arial", "B", 11)
-            pdf.cell(0, 7, "3. RECEBIMENTOS POR MEIO DE PAGAMENTO", ln=True, fill=True)
+            pdf.cell(0, 7, "3. RECEBIMENTOS POR MEIO DE PAGAMENTO", ln=1, fill=True)
             pdf.set_font("Arial", "", 10)
             for meio in ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"]:
                 val_meio = v_filtradas[v_filtradas["Forma de Pagamento"] == meio]["Valor Total"].sum()
                 pdf.cell(47.5, 6, f" {meio}: R$ {val_meio:.2f}", border=1)
-            pdf.ln(10)
+            pdf.ln()
+            pdf.ln()
             
             # Bloco 5: Histórico de Quebras de Caixa
             pdf.set_font("Arial", "B", 11)
-            pdf.cell(0, 7, "4. AUDITORIA DE FECHAMENTOS DE CAIXA DIARIOS", ln=True, fill=True)
+            pdf.cell(0, 7, "4. AUDITORIA DE FECHAMENTOS DE CAIXA DIARIOS", ln=1, fill=True)
             pdf.set_font("Arial", "B", 9)
             pdf.cell(40, 6, "Data", border=1, align="C")
             pdf.cell(40, 6, "Usuario", border=1, align="C")
             pdf.cell(50, 6, "Total Contado", border=1, align="C")
-            pdf.cell(60, 6, "Diferenca / Status", border=1, align="C", ln=True)
+            pdf.cell(60, 6, "Diferenca / Status", border=1, align="C", ln=1)
             pdf.set_font("Arial", "", 9)
             if not f_filtrados.empty:
                 for _, fech in f_filtrados.iterrows():
                     pdf.cell(40, 6, str(fech["Data"]), border=1, align="C")
                     pdf.cell(40, 6, str(fech["Usuario"]).upper(), border=1, align="C")
                     pdf.cell(50, 6, f"R$ {fech['Total Real']:.2f}", border=1, align="C")
-                    pdf.cell(60, 6, str(fech["Status"]), border=1, align="C", ln=True)
+                    pdf.cell(60, 6, str(fech["Status"]), border=1, align="C", ln=1)
             else:
-                pdf.cell(190, 6, "Nenhum fechamento auditado gravado no intervalo selecionado.", border=1, ln=True, align="C")
+                pdf.cell(190, 6, "Nenhum fechamento auditado gravado no intervalo selecionado.", border=1, ln=1, align="C")
                 
-            # Exportação segura do buffer binário para download imediato na tela
+            # Exportação segura do buffer binário
             pdf_output = pdf.output(dest='S')
             st.download_button(
                 label="📥 Baixar Relatório Gerado (PDF)",
