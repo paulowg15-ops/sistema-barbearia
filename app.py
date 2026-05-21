@@ -22,8 +22,9 @@ ARQUIVO_PRESENCAS = "presencas.csv"
 ARQUIVO_USUARIOS = "usuarios.csv"
 ARQUIVO_CONSUMO_INTERNO = "consumo_interno.csv"
 ARQUIVO_FECHAMENTOS = "fechamentos.csv"
+ARQUIVO_AUDITORIA = "auditoria.csv" # Novo banco de dados de rastro secreto
 
-# Lista oficial para o Backup ZIP
+# Lista oficial para o Backup ZIP (Auditoria incluída na tranca do ZIP)
 TODOS_ARQUIVOS_BACKUP = {
     "vendas.csv": ARQUIVO_VENDAS,
     "gastos.csv": ARQUIVO_GASTOS,
@@ -32,7 +33,8 @@ TODOS_ARQUIVOS_BACKUP = {
     "presencas.csv": ARQUIVO_PRESENCAS,
     "consumo_interno.csv": ARQUIVO_CONSUMO_INTERNO,
     "usuarios.csv": ARQUIVO_USUARIOS,
-    "fechamentos.csv": ARQUIVO_FECHAMENTOS
+    "fechamentos.csv": ARQUIVO_FECHAMENTOS,
+    "auditoria.csv": ARQUIVO_AUDITORIA
 }
 
 def inicializar_banco_de_dados():
@@ -57,6 +59,8 @@ def inicializar_banco_de_dados():
                 pd.DataFrame([{"Nome": "G.", "Comissão (%)": 50.0}]).to_csv(arquivo, index=False, encoding='utf-8')
             elif arquivo == ARQUIVO_FECHAMENTOS:
                 pd.DataFrame(columns=["Data", "Usuario", "Dinheiro Real", "Pix Real", "Cartao Real", "Total Real", "Total Sistema", "Diferenca", "Status", "Observacoes"]).to_csv(arquivo, index=False, encoding='utf-8')
+            elif arquivo == ARQUIVO_AUDITORIA:
+                pd.DataFrame(columns=["Horário Log", "Usuário Responsável", "Ação Realizada", "Detalhes do Item Deletado"]).to_csv(arquivo, index=False, encoding='utf-8')
             else:
                 pd.DataFrame(columns=["Data", "Responsavel", "Item", "Quantidade", "Valor Total"]).to_csv(arquivo, index=False, encoding='utf-8') if arquivo == ARQUIVO_CONSUMO_INTERNO else pd.DataFrame().to_csv(arquivo, index=False, encoding='utf-8')
 
@@ -64,10 +68,21 @@ inicializar_banco_de_dados()
 
 usuarios_df = pd.read_csv(ARQUIVO_USUARIOS, encoding='utf-8')
 
-PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "🔒 Fechamento de Dia", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "📄 Emitir Relatórios", "💾 Backup do Sistema", "⚙️ Configurações"]
+PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "🔒 Fechamento de Dia", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "📄 Emitir Relatórios", "🕵️ Trilha de Auditoria", "💾 Backup do Sistema", "⚙️ Configurações"]
 PERMISSOES_PADRAO = ["💸 Abrir Comanda (Vendas)", "📦 Estoque & Serviços"]
 
-# --- SISTEMA DE LOGIN MULTI-USUÁRIO (TOKEN VIA URL) ---
+# --- FUNÇÃO INTERNA SEGREDA DE LOGS (RASTRO) ---
+def registrar_rastro_auditoria(acao, detalhes):
+    df_auditoria_atual = pd.read_csv(ARQUIVO_AUDITORIA, encoding='utf-8')
+    nova_linha_log = pd.DataFrame([{
+        "Horário Log": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "Usuário Responsável": st.session_state["perfil"].upper(),
+        "Ação Realizada": acao,
+        "Detalhes do Item Deletado": detalhes
+    }])
+    pd.concat([df_auditoria_atual, nova_linha_log], ignore_index=True).to_csv(ARQUIVO_AUDITORIA, index=False, encoding='utf-8')
+
+# --- SISTEMA DE LOGIN ---
 def gerar_token(usuario):
     validade = (datetime.now() + timedelta(hours=12)).strftime("%Y-%m-%d %H:%M:%S")
     texto = f"{usuario}|{validade}"
@@ -78,8 +93,7 @@ def validar_token(token):
         texto = base64.b64decode(token.encode('utf-8')).decode('utf-8')
         usuario, validade_str = texto.split("|")
         validade = datetime.strptime(validade_str, "%Y-%m-%d %H:%M:%S")
-        if datetime.now() <= validade:
-            return usuario
+        if datetime.now() <= validade: return usuario
     except: pass
     return None
 
@@ -89,7 +103,6 @@ if "autenticado" not in st.session_state:
     st.session_state["permissoes_usuario"] = PERMISSOES_PADRAO
     st.session_state["carrinho_comanda"] = []
 
-# Checagem automática do F5
 if not st.session_state["autenticado"] and "token" in st.query_params:
     usr_decodificado = validar_token(st.query_params["token"])
     if usr_decodificado:
@@ -101,10 +114,8 @@ if not st.session_state["autenticado"] and "token" in st.query_params:
             perm_string = u_linha.iloc[0]["Permissoes"]
             st.session_state["permissoes_usuario"] = PERMISSOES_MASTER if perm_string == "TODAS" else perm_string.split("|")
 
-# --- TELA DE LOGIN ---
 if not st.session_state["autenticado"]:
     st.title("💈 O Chefão Barbearia e Conveniência")
-    st.write("Entre com suas credenciais para acessar o sistema")
     col_login, _ = st.columns([1, 2])
     with col_login:
         with st.container(border=True):
@@ -123,7 +134,6 @@ if not st.session_state["autenticado"]:
                 else: st.error("Usuário ou senha incorretos!")
     st.stop()
 
-# Carregar tabelas completas
 servicos_df = pd.read_csv(ARQUIVO_SERVICOS, encoding='utf-8')
 produtos_df = pd.read_csv(ARQUIVO_PRODUTOS, encoding='utf-8')
 vendas_df = pd.read_csv(ARQUIVO_VENDAS, encoding='utf-8').dropna(how='all')
@@ -133,8 +143,8 @@ assinaturas_df = pd.read_csv(ARQUIVO_ASSINATURAS, encoding='utf-8').dropna(how='
 presencas_df = pd.read_csv(ARQUIVO_PRESENCAS, encoding='utf-8').dropna(how='all')
 consumo_interno_df = pd.read_csv(ARQUIVO_CONSUMO_INTERNO, encoding='utf-8').dropna(how='all')
 fechamentos_df = pd.read_csv(ARQUIVO_FECHAMENTOS, encoding='utf-8').dropna(how='all')
+auditoria_df = pd.read_csv(ARQUIVO_AUDITORIA, encoding='utf-8').dropna(how='all')
 
-# --- CONFIGURAÇÃO DA BARRA LATERAL ---
 st.sidebar.title("✂️ O Chefão")
 st.sidebar.write(f"Conectado como: **{st.session_state['perfil'].upper()}**")
 st.sidebar.markdown("---")
@@ -149,7 +159,6 @@ if st.sidebar.button("🚪 Sair com Segurança", use_container_width=True):
     st.query_params.clear()
     st.rerun()
 
-# --- CLASSE AUXILIAR DO PDF ---
 class PDFRelatorio(FPDF):
     def header(self):
         self.set_font("Arial", "B", 16)
@@ -158,7 +167,6 @@ class PDFRelatorio(FPDF):
         self.cell(0, 5, "Relatorio Oficial de Movimentacao de Caixa e Auditoria", ln=1, align="C")
         self.ln(5)
         self.line(10, 26, 200, 26)
-
     def footer(self):
         self.set_y(-15)
         self.set_font("Arial", "I", 8)
@@ -318,7 +326,7 @@ elif menu == "📉 Lançar Gasto/Despesa":
                 time.sleep(1.2)
                 st.rerun()
 
-# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS ----------------
+# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS (AUDITADO COM GRAVAÇÃO DE RASTRO) ----------------
 elif menu == "✏️ Corrigir Lançamentos":
     st.header("✏️ Central de Correções e Estornos")
     tab_corr_vendas, tab_corr_fechamentos = st.tabs(["🛒 Corrigir Comandas de Caixa", "🔒 Auditar Fechamentos Diários"])
@@ -348,6 +356,12 @@ elif menu == "✏️ Corrigir Lançamentos":
                 with st.container(border=True):
                     id_remover = st.selectbox("Selecione o ID para remover:", vendas_visivel_df["ID_Lancamento"].tolist())
                     if st.button("❌ Excluir Lançamento Errado", use_container_width=True):
+                        venda_deletada_info = vendas_df.iloc[id_remover]
+                        
+                        # DEIXA O RASTRO SECRETO ANTES DE DELETAR
+                        texto_rastro = f"Dia lancado: {venda_deletada_info['Data']} | Item: {venda_deletada_info['Item']} | Cliente: {venda_deletada_info['Cliente']} | Recebido em: {venda_deletada_info['Forma de Pagamento']} | Total: R$ {venda_deletada_info['Valor Total']}"
+                        registrar_rastro_auditoria("EXCLUSÃO DE COMANDA/VENDA", texto_rastro)
+                        
                         vendas_df = vendas_df.drop(id_remover).reset_index(drop=True)
                         vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
                         st.success("🗑️ Removido com sucesso!")
@@ -362,6 +376,12 @@ elif menu == "✏️ Corrigir Lançamentos":
             st.dataframe(fech_visivel_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
             id_fech_remover = st.selectbox("Selecione o ID para remover:", fech_visivel_df["ID_Fechamento"].tolist())
             if st.button("❌ Excluir Fechamento Selecionado", use_container_width=True):
+                fech_deletado_info = fechamentos_df.iloc[id_fech_remover]
+                
+                # DEIXA O RASTRO SECRETO ANTES DE DELETAR
+                texto_rastro = f"Caixa do Dia: {fech_deletado_info['Data']} | Fechado por: {fech_deletado_info['Usuario']} | Total Contado Real: R$ {fech_deletado_info['Total Real']} | Status original: {fech_deletado_info['Status']}"
+                registrar_rastro_auditoria("EXCLUSÃO DE FECHAMENTO CAIXA", texto_rastro)
+                
                 fechamentos_df = fechamentos_df.drop(id_fech_remover).reset_index(drop=True)
                 fechamentos_df.to_csv(ARQUIVO_FECHAMENTOS, index=False, encoding='utf-8')
                 st.success("🗑️ Fechamento removido do histórico de auditoria!")
@@ -753,14 +773,11 @@ elif menu == "📊 Painel de Relatórios":
         if "admin" not in lista_staff: lista_staff.append("admin")
         
         produtos_atualizados_df = pd.read_csv(ARQUIVO_PRODUTOS, encoding='utf-8')
-        
         col_staff1, col_staff2 = st.columns([1, 1], gap="large")
         
         with col_staff1:
             st.subheader("✍️ Registrar Retirada (Staff)")
             quem_consumiu = st.selectbox("Quem solicitou?", lista_staff, key="sel_staff_cons")
-            
-            # ATUALIZAÇÃO CONFORME SOLICITAÇÃO: Tipo de Lançamento (Produto ou Vale livre)
             tipo_lancamento_staff = st.radio("Selecione o Tipo de Lançamento:", ["Produto do Estoque", "Vale em Dinheiro (Adiantamento)"], key="rad_tipo_staff")
             
             if tipo_lancamento_staff == "Produto do Estoque":
@@ -786,16 +803,14 @@ elif menu == "📊 Painel de Relatórios":
                             st.success(f"✅ Consumo de {qtd_retirada}x '{produto_retirado}' registrado!")
                             time.sleep(1.2)
                             st.rerun()
-                        else:
-                            st.error(f"❌ Erro: Quantidade insuficiente no estoque! Apenas {estoque_real_disponivel} unidades disponíveis.")
+                        else: st.error(f"❌ Erro: Quantidade insuficiente no estoque!")
             else:
-                # Campo de Vale Aleatório em Dinheiro
                 valor_vale_livre = st.number_input("Digite o Valor Adiantado do Vale (R$):", min_value=1.0, value=20.0, step=5.0, key="num_vale_val")
                 if st.button("💾 Registrar Vale de Adiantamento", type="primary", key="btn_save_vale_staff"):
                     novo_vale_linha = pd.DataFrame([{"Data": datetime.now().strftime("%Y-%m-%d"), "Responsavel": quem_consumiu, "Item": "VALE EM DINHEIRO", "Quantidade": 1, "Valor Total": float(valor_vale_livre)}])
                     consumo_interno_atualizado = pd.concat([consumo_interno_df, novo_vale_linha], ignore_index=True)
                     consumo_interno_atualizado.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
-                    st.success(f"✅ Vale adiantado de R$ {valor_vale_livre:.2f} gravado na folha de {quem_consumiu.upper()}!")
+                    st.success(f"✅ Vale adiantado de R$ {valor_vale_livre:.2f} gravado!")
                     time.sleep(1.2)
                     st.rerun()
 
@@ -808,26 +823,29 @@ elif menu == "📊 Painel de Relatórios":
                 lista_consumos_cancelar = [f"{idx} - {row['Responsavel']}: {row['Item']} | Total: R$ {row['Valor Total']:.2f}" for idx, row in consumo_visivel_df.iterrows()]
                 consumo_selecionado_str = st.selectbox("Selecione o registro para estornar:", lista_consumos_cancelar, key="sb_cancel_cons")
                 
+                # AJUSTE CONFORME SOLICITAÇÃO: Liberado para o Gerente deletar consumos e vales errados
                 if st.button("❌ Cancelar Item Selecionado", use_container_width=True, key="btn_delete_staff_item"):
                     index_excluir = int(consumo_selecionado_str.split(" - ")[0])
                     item_deletado = consumo_interno_df.iloc[index_excluir]
                     
+                    # DEIXA O RASTRO SECRETO ANTES DE DELETAR O CONSUMO OPERACIONAL
+                    texto_rastro = f"Profissional: {item_deletado['Responsavel']} | Item/Tipo: {item_deletado['Item']} | Quantidade: {item_deletado['Quantidade']} | Custo Retirado da Folha: R$ {item_deletado['Valor Total']}"
+                    registrar_rastro_auditoria("EXCLUSÃO DE ADIANTAMENTO/CONSUMO STAFF", texto_rastro)
+                    
                     consumo_interno_df = consumo_interno_df.drop(index_excluir).reset_index(drop=True)
                     consumo_interno_df.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
                     
-                    st.success(f"🗑️ O lançamento foi anulado! Caso tenha sido um produto, o estoque já foi restabelecido.")
+                    st.success(f"🗑️ O lançamento foi anulado! Estoque e folha atualizados.")
                     time.sleep(1.2)
                     st.rerun()
-            else:
-                st.info("Nenhum consumo ou vale registrado para cancelamento.")
+            else: st.info("Nenhum consumo ou vale registrado para cancelamento.")
                     
         st.markdown("---")
         st.markdown("#### 📋 Extrato Geral de Retiradas e Vales da Equipe")
         extrato_exibicao = pd.read_csv(ARQUIVO_CONSUMO_INTERNO, encoding='utf-8')
         if not extrato_exibicao.empty:
             st.dataframe(extrato_exibicao.sort_index(ascending=False), use_container_width=True, hide_index=True)
-        else:
-            st.info("Nenhum consumo ou vale registrado para a equipe nesta semana.")
+        else: st.info("Nenhum consumo ou vale registrado para a equipe nesta semana.")
             
         if st.session_state["perfil"] == "admin":
             if st.button("⚠️ Limpar Extrato da Semana (Apenas Admin)", key="btn_clear_staff_week"):
@@ -883,7 +901,7 @@ elif menu == "📄 Emitir Relatórios":
             
             pdf.set_font("Arial", "B", 11)
             pdf.set_fill_color(240, 240, 240)
-            pdf.cell(0, 7, "1. RESULO FINANCEIRO GERAL", ln=1, fill=True)
+            pdf.cell(0, 7, "1. RESUMO FINANCEIRO GERAL", ln=1, fill=True)
             pdf.set_font("Arial", "", 10)
             pdf.cell(95, 6, f" Faturamento Bruto Balcao: R$ {faturamento_tot:.2f}", border=1)
             pdf.cell(95, 6, f" Total de Saidas (Gastos): R$ {gastos_tot:.2f}", border=1, ln=1)
@@ -936,7 +954,28 @@ elif menu == "📄 Emitir Relatórios":
             )
             st.success("✨ Relatório generated! Clique no botão acima para salvar o PDF.")
 
-# ---------------- MÓDULO 12: TELA DE BACKUP UNIFICADO ----------------
+# ---------------- MÓDULO 12: TELA DE AUDITORIA EXCLUSIVA DO SUPER ADMIN (NOVA TELA) ----------------
+elif menu == "🕵️ Trilha de Auditoria":
+    if st.session_state["perfil"] == "admin":
+        st.header("🕵️ Trilha de Auditoria e Segurança Geral")
+        st.write("Esta tela exibe o rastro completo de exclusões de vendas, caixas e vales feitas no sistema.")
+        
+        with st.container(border=True):
+            if not auditoria_df.empty:
+                st.markdown("#### 📂 Histórico Geral de Modificações por Usuário")
+                st.dataframe(auditoria_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
+                
+                if st.button("🗑️ Limpar Todo o Histórico de Logs", type="secondary", use_container_width=True):
+                    pd.DataFrame(columns=["Horário Log", "Usuário Responsável", "Ação Realizada", "Detalhes do Item Deletado"]).to_csv(ARQUIVO_AUDITORIA, index=False, encoding='utf-8')
+                    st.success("Histórico de auditoria esvaziado!")
+                    time.sleep(1.0)
+                    st.rerun()
+            else:
+                st.info("🟢 O sistema está 100% limpo! Nenhuma exclusão ou estorno foi realizado no período.")
+    else:
+        st.error("🚨 ÁREA RESTRITA: Apenas o Super Administrador Geral possui as chaves de acesso para ver a Trilha de Auditoria.")
+
+# ---------------- MÓDULO 13: TELA DE BACKUP UNIFICADO ----------------
 elif menu == "💾 Backup do Sistema":
     if st.session_state["perfil"] == "admin":
         st.header("💾 Sistema Unificado de Backup Completo (.ZIP)")
@@ -965,7 +1004,7 @@ elif menu == "💾 Backup do Sistema":
                     except Exception as e: st.error(f"Erro: {e}")
     else: st.error("🚨 ÁREA RESTRITA AO SUPER ADMINISTRADOR.")
 
-# ---------------- MÓDULO 13: CONFIGURAÇÕES ----------------
+# ---------------- MÓDULO 14: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações":
     if st.session_state["perfil"] == "admin":
         st.header("Configurações Globais")
