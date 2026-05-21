@@ -318,7 +318,7 @@ elif menu == "📉 Lançar Gasto/Despesa":
                 time.sleep(1.2)
                 st.rerun()
 
-# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS ----------------
+# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS (LIBERADO PARA GERENTE/ADMIN) ----------------
 elif menu == "✏️ Corrigir Lançamentos":
     st.header("✏️ Central de Correções e Estornos")
     tab_corr_vendas, tab_corr_fechamentos = st.tabs(["🛒 Corrigir Comandas de Caixa", "🔒 Auditar Fechamentos Diários"])
@@ -347,32 +347,29 @@ elif menu == "✏️ Corrigir Lançamentos":
             with col_ed2:
                 with st.container(border=True):
                     id_remover = st.selectbox("Selecione o ID para remover:", vendas_visivel_df["ID_Lancamento"].tolist())
-                    if st.session_state["perfil"] == "admin":
-                        if st.button("❌ Excluir Lançamento Errado", use_container_width=True):
-                            vendas_df = vendas_df.drop(id_remover).reset_index(drop=True)
-                            vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
-                            st.success("🗑️ Removido!")
-                            time.sleep(1.2)
-                            st.rerun()
-                    else: st.error("🚫 Acesso Negado: Apenas o Administrador pode apagar vendas.")
-        else: st.info("Nenhuma venda disponível.")
+                    # AJUSTE CONFORME SOLICITAÇÃO: Liberado para Gerente e Admin corrigirem falhas do caixa
+                    if st.button("❌ Excluir Lançamento Errado", use_container_width=True):
+                        vendas_df = vendas_df.drop(id_remover).reset_index(drop=True)
+                        vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
+                        st.success("🗑️ Removido com sucesso!")
+                        time.sleep(1.2)
+                        st.rerun()
 
     with tab_corr_fechamentos:
         st.subheader("🗑️ Excluir Fechamento Diário Incorreto")
-        if st.session_state["perfil"] == "admin":
-            if not fechamentos_df.empty:
-                fech_visivel_df = fechamentos_df.copy()
-                fech_visivel_df.insert(0, "ID_Fechamento", fech_visivel_df.index)
-                st.dataframe(fech_visivel_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
-                id_fech_remover = st.selectbox("Selecione o ID para remover:", fech_visivel_df["ID_Fechamento"].tolist())
-                if st.button("❌ Excluir Fechamento Selecionado", use_container_width=True):
-                    fechamentos_df = fechamentos_df.drop(id_fech_remover).reset_index(drop=True)
-                    fechamentos_df.to_csv(ARQUIVO_FECHAMENTOS, index=False, encoding='utf-8')
-                    st.success("🗑️ Fechamento removido do histórico!")
-                    time.sleep(1.2)
-                    st.rerun()
-            else: st.info("Nenhum fechamento registrado no sistema.")
-        else: st.error("🚫 Acesso Negado: Apenas o Admin pode anular um fechamento.")
+        # AJUSTE CONFORME SOLICITAÇÃO: Liberado para o Gerente anular caixas errados do dia
+        if not fechamentos_df.empty:
+            fech_visivel_df = fechamentos_df.copy()
+            fech_visivel_df.insert(0, "ID_Fechamento", fech_visivel_df.index)
+            st.dataframe(fech_visivel_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
+            id_fech_remover = st.selectbox("Selecione o ID para remover:", fech_visivel_df["ID_Fechamento"].tolist())
+            if st.button("❌ Excluir Fechamento Selecionado", use_container_width=True):
+                fechamentos_df = fechamentos_df.drop(id_fech_remover).reset_index(drop=True)
+                fechamentos_df.to_csv(ARQUIVO_FECHAMENTOS, index=False, encoding='utf-8')
+                st.success("🗑️ Fechamento removido do histórico de auditoria!")
+                time.sleep(1.2)
+                st.rerun()
+        else: st.info("Nenhum fechamento registrado no sistema.")
 
 # ---------------- MÓDULO 5: FECHAMENTO DE DIA ----------------
 elif menu == "🔒 Fechamento de Dia":
@@ -669,6 +666,7 @@ elif menu == "📊 Painel de Relatórios":
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
     gastos_df["Valor (R$)"] = pd.to_numeric(gastos_df["Valor (R$)"], errors='coerce').fillna(0)
     consumo_interno_df["Valor Total"] = pd.to_numeric(consumo_interno_df["Valor Total"], errors='coerce').fillna(0)
+    consumo_interno_df["Quantidade"] = pd.to_numeric(consumo_interno_df["Quantidade"], errors='coerce').fillna(0)
     
     vendas_df["Ano_Mes"] = vendas_df["Data"].str[:7]
     gastos_df["Ano_Mes"] = gastos_df["Data"].str[:7]
@@ -756,48 +754,71 @@ elif menu == "📊 Painel de Relatórios":
         lista_staff = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else []
         if "admin" not in lista_staff: lista_staff.append("admin")
         
-        # Recarregar arquivos atualizados dinamicamente para evitar ignorar cliques
         produtos_atualizados_df = pd.read_csv(ARQUIVO_PRODUTOS, encoding='utf-8')
         
-        quem_consumiu = st.selectbox("Quem consumiu?", lista_staff, key="sel_staff_cons")
-        produto_retirado = st.selectbox("Produto Retirado:", produtos_atualizados_df["Nome do Produto"].tolist(), key="sel_prod_cons")
-        qtd_retirada = st.number_input("Quantidade:", min_value=1, value=1, step=1, key="num_qtd_cons")
+        col_staff1, col_staff2 = st.columns([1, 1], gap="large")
         
-        # Puxa informações de preço e estoque em tempo real
-        linha_prod_ref = produtos_atualizados_df[produtos_atualizados_df["Nome do Produto"] == produto_retirado]
-        
-        if not linha_prod_ref.empty:
-            estoque_inicial_cadastrado = int(linha_prod_ref["Estoque Inicial"].values[0])
-            preco_venda_prod = float(linha_prod_ref["Preço de Venda"].values[0])
+        with col_staff1:
+            st.subheader("✍️ Lançar Novo Consumo")
+            quem_consumiu = st.selectbox("Quem consumiu?", lista_staff, key="sel_staff_cons")
+            produto_retirado = st.selectbox("Produto Retirado:", produtos_atualizados_df["Nome do Produto"].tolist(), key="sel_prod_cons")
+            qtd_retirada = st.number_input("Quantidade:", min_value=1, value=1, step=1, key="num_qtd_cons")
             
-            # Calcula o estoque físico real (Estoque Inicial - Vendas - Consumos Anteriores)
-            vendas_totais_item = vendas_df[(vendas_df["Item"] == produto_retirado) & (vendas_df["Tipo"] == "Produto")]["Quantidade"].sum()
-            consumos_totais_item = consumo_interno_df[consumo_interno_df["Item"] == produto_retirado]["Quantidade"].sum()
-            estoque_real_disponivel = estoque_inicial_cadastrado - int(vendas_totais_item) - int(consumos_totais_item)
+            linha_prod_ref = produtos_atualizados_df[produtos_atualizados_df["Nome do Produto"] == produto_retirado]
             
-            st.write(f"📦 Estoque físico real disponível no momento: **{estoque_real_disponivel} unidades**")
-            
-            if st.button("💾 Gravar Consumo do Funcionário", type="primary", key="btn_save_staff_cons"):
-                if qtd_retirada <= estoque_real_disponivel:
-                    # 1. Registra o Consumo Interno para abater na folha dele
-                    novo_consumo_linha = pd.DataFrame([{
-                        "Data": datetime.now().strftime("%Y-%m-%d"),
-                        "Responsavel": quem_consumiu,
-                        "Item": produto_retirado,
-                        "Quantidade": int(qtd_retirada),
-                        "Valor Total": preco_venda_prod * int(qtd_retirada)
-                    }])
-                    consumo_interno_atualizado = pd.concat([consumo_interno_df, novo_consumo_linha], ignore_index=True)
-                    consumo_interno_atualizado.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
+            if not linha_prod_ref.empty:
+                estoque_inicial_cadastrado = int(linha_prod_ref["Estoque Inicial"].values[0])
+                preco_venda_prod = float(linha_prod_ref["Preço de Venda"].values[0])
+                
+                vendas_totais_item = vendas_df[(vendas_df["Item"] == produto_retirado) & (vendas_df["Tipo"] == "Produto")]["Quantidade"].sum()
+                consumos_totais_item = consumo_interno_df[consumo_interno_df["Item"] == produto_retirado]["Quantidade"].sum()
+                estoque_real_disponivel = estoque_inicial_cadastrado - int(vendas_totais_item) - int(consumos_totais_item)
+                
+                st.write(f"📦 Estoque físico real disponível no momento: **{estoque_real_disponivel} unidades**")
+                
+                if st.button("💾 Gravar Consumo do Funcionário", type="primary", key="btn_save_staff_cons"):
+                    if qtd_retirada <= estoque_real_disponivel:
+                        novo_consumo_linha = pd.DataFrame([{
+                            "Data": datetime.now().strftime("%Y-%m-%d"),
+                            "Responsavel": quem_consumiu,
+                            "Item": produto_retirado,
+                            "Quantidade": int(qtd_retirada),
+                            "Valor Total": preco_venda_prod * int(qtd_retirada)
+                        }])
+                        consumo_interno_atualizado = pd.concat([consumo_interno_df, novo_consumo_linha], ignore_index=True)
+                        consumo_interno_atualizado.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
+                        st.success(f"✅ Consumo de {qtd_retirada}x '{produto_retirado}' registrado!")
+                        time.sleep(1.2)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Erro: Quantidade insuficiente no estoque! Você tentou lançar {qtd_retirada} itens, mas a barbearia só possui {estoque_real_disponivel} em estoque.")
+
+        with col_staff2:
+            st.subheader("🗑️ Cancelar / Estornar Consumo Errado")
+            # AJUSTE CONFORME SOLICITAÇÃO: Removida a trava do admin, agora o gerente também acessa o botão de remover consumo errado
+            if not consumo_interno_df.empty:
+                consumo_visivel_df = consumo_interno_df.copy()
+                consumo_visivel_df.insert(0, "ID_Consumo", consumo_visivel_df.index)
+                
+                lista_consumos_cancelar = [f"{idx} - {row['Responsavel']} pegou {row['Quantidade']}x {row['Item']}" for idx, row in consumo_visivel_df.iterrows()]
+                consumo_selecionado_str = st.selectbox("Selecione o registro para estornar:", lista_consumos_cancelar, key="sb_cancel_cons")
+                
+                if st.button("❌ Cancelar Consumo Selecionado", use_container_width=True, key="btn_delete_staff_item"):
+                    index_excluir = int(consumo_selecionado_str.split(" - ")[0])
+                    item_deletado = consumo_interno_df.iloc[index_excluir]
                     
-                    st.success(f"✅ Consumo de {qtd_retirada}x '{produto_retirado}' registrado e debitado do estoque com sucesso!")
+                    # Remove a linha e salva (estoque sobe de volta automaticamente!)
+                    consumo_interno_df = consumo_interno_df.drop(index_excluir).reset_index(drop=True)
+                    consumo_interno_df.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
+                    
+                    st.success(f"🗑️ O consumo foi anulado! {int(item_deletado['Quantidade'])} unidades do produto '{item_deletado['Item']}' voltaram para o estoque.")
                     time.sleep(1.2)
                     st.rerun()
-                else:
-                    st.error(f"❌ Erro: Quantidade insuficiente no estoque! Você tentou lançar {qtd_retirada} itens, mas a barbearia só possui {estoque_real_disponivel} em estoque.")
+            else:
+                st.info("Nenhum consumo registrado para cancelamento.")
                     
-        # Exibe o extrato atualizado da semana
-        st.markdown("#### 📋 Extrato Atual de Consumo da Equipe")
+        st.markdown("---")
+        st.markdown("#### 📋 Extrato Geral de Consumo da Equipe")
         extrato_exibicao = pd.read_csv(ARQUIVO_CONSUMO_INTERNO, encoding='utf-8')
         if not extrato_exibicao.empty:
             st.dataframe(extrato_exibicao.sort_index(ascending=False), use_container_width=True, hide_index=True)
