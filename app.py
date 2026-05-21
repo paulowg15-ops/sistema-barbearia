@@ -318,7 +318,7 @@ elif menu == "📉 Lançar Gasto/Despesa":
                 time.sleep(1.2)
                 st.rerun()
 
-# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS (LIBERADO PARA GERENTE/ADMIN) ----------------
+# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS ----------------
 elif menu == "✏️ Corrigir Lançamentos":
     st.header("✏️ Central de Correções e Estornos")
     tab_corr_vendas, tab_corr_fechamentos = st.tabs(["🛒 Corrigir Comandas de Caixa", "🔒 Auditar Fechamentos Diários"])
@@ -347,7 +347,6 @@ elif menu == "✏️ Corrigir Lançamentos":
             with col_ed2:
                 with st.container(border=True):
                     id_remover = st.selectbox("Selecione o ID para remover:", vendas_visivel_df["ID_Lancamento"].tolist())
-                    # AJUSTE CONFORME SOLICITAÇÃO: Liberado para Gerente e Admin corrigirem falhas do caixa
                     if st.button("❌ Excluir Lançamento Errado", use_container_width=True):
                         vendas_df = vendas_df.drop(id_remover).reset_index(drop=True)
                         vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
@@ -357,7 +356,6 @@ elif menu == "✏️ Corrigir Lançamentos":
 
     with tab_corr_fechamentos:
         st.subheader("🗑️ Excluir Fechamento Diário Incorreto")
-        # AJUSTE CONFORME SOLICITAÇÃO: Liberado para o Gerente anular caixas errados do dia
         if not fechamentos_df.empty:
             fech_visivel_df = fechamentos_df.copy()
             fech_visivel_df.insert(0, "ID_Fechamento", fech_visivel_df.index)
@@ -728,7 +726,7 @@ elif menu == "📊 Painel de Relatórios":
     c_g3.metric("🔥 LUCRO LÍQUIDO REAL DA EMPRESA", f"R$ {lucro_liquido_geral_real:.2f}")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    tab_rel1, tab_rel2, tab_rel3 = st.tabs(["💸 Fechamento Semanal & Comissões", "🥤 Consumo Interno (Staff)", "📅 Visão Mensal Expandida"])
+    tab_rel1, tab_rel2, tab_rel3 = st.tabs(["💸 Fechamento Semanal & Comissões", "🥤 Consumo & Vales (Staff)", "📅 Visão Mensal Expandida"])
     
     with tab_rel1:
         if not barbeiros_df.empty:
@@ -759,71 +757,77 @@ elif menu == "📊 Painel de Relatórios":
         col_staff1, col_staff2 = st.columns([1, 1], gap="large")
         
         with col_staff1:
-            st.subheader("✍️ Lançar Novo Consumo")
-            quem_consumiu = st.selectbox("Quem consumiu?", lista_staff, key="sel_staff_cons")
-            produto_retirado = st.selectbox("Produto Retirado:", produtos_atualizados_df["Nome do Produto"].tolist(), key="sel_prod_cons")
-            qtd_retirada = st.number_input("Quantidade:", min_value=1, value=1, step=1, key="num_qtd_cons")
+            st.subheader("✍️ Registrar Retirada (Staff)")
+            quem_consumiu = st.selectbox("Quem solicitou?", lista_staff, key="sel_staff_cons")
             
-            linha_prod_ref = produtos_atualizados_df[produtos_atualizados_df["Nome do Produto"] == produto_retirado]
+            # ATUALIZAÇÃO CONFORME SOLICITAÇÃO: Tipo de Lançamento (Produto ou Vale livre)
+            tipo_lancamento_staff = st.radio("Selecione o Tipo de Lançamento:", ["Produto do Estoque", "Vale em Dinheiro (Adiantamento)"], key="rad_tipo_staff")
             
-            if not linha_prod_ref.empty:
-                estoque_inicial_cadastrado = int(linha_prod_ref["Estoque Inicial"].values[0])
-                preco_venda_prod = float(linha_prod_ref["Preço de Venda"].values[0])
+            if tipo_lancamento_staff == "Produto do Estoque":
+                produto_retirado = st.selectbox("Produto Retirado:", produtos_atualizados_df["Nome do Produto"].tolist(), key="sel_prod_cons")
+                qtd_retirada = st.number_input("Quantidade:", min_value=1, value=1, step=1, key="num_qtd_cons")
                 
-                vendas_totais_item = vendas_df[(vendas_df["Item"] == produto_retirado) & (vendas_df["Tipo"] == "Produto")]["Quantidade"].sum()
-                consumos_totais_item = consumo_interno_df[consumo_interno_df["Item"] == produto_retirado]["Quantidade"].sum()
-                estoque_real_disponivel = estoque_inicial_cadastrado - int(vendas_totais_item) - int(consumos_totais_item)
-                
-                st.write(f"📦 Estoque físico real disponível no momento: **{estoque_real_disponivel} unidades**")
-                
-                if st.button("💾 Gravar Consumo do Funcionário", type="primary", key="btn_save_staff_cons"):
-                    if qtd_retirada <= estoque_real_disponivel:
-                        novo_consumo_linha = pd.DataFrame([{
-                            "Data": datetime.now().strftime("%Y-%m-%d"),
-                            "Responsavel": quem_consumiu,
-                            "Item": produto_retirado,
-                            "Quantidade": int(qtd_retirada),
-                            "Valor Total": preco_venda_prod * int(qtd_retirada)
-                        }])
-                        consumo_interno_atualizado = pd.concat([consumo_interno_df, novo_consumo_linha], ignore_index=True)
-                        consumo_interno_atualizado.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
-                        st.success(f"✅ Consumo de {qtd_retirada}x '{produto_retirado}' registrado!")
-                        time.sleep(1.2)
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Erro: Quantidade insuficiente no estoque! Você tentou lançar {qtd_retirada} itens, mas a barbearia só possui {estoque_real_disponivel} em estoque.")
+                linha_prod_ref = produtos_atualizados_df[produtos_atualizados_df["Nome do Produto"] == produto_retirado]
+                if not linha_prod_ref.empty:
+                    estoque_inicial_cadastrado = int(linha_prod_ref["Estoque Inicial"].values[0])
+                    preco_venda_prod = float(linha_prod_ref["Preço de Venda"].values[0])
+                    
+                    vendas_totais_item = vendas_df[(vendas_df["Item"] == produto_retirado) & (vendas_df["Tipo"] == "Produto")]["Quantidade"].sum()
+                    consumos_totais_item = consumo_interno_df[consumo_interno_df["Item"] == produto_retirado]["Quantidade"].sum()
+                    estoque_real_disponivel = estoque_inicial_cadastrado - int(vendas_totais_item) - int(consumos_totais_item)
+                    
+                    st.write(f"📦 Estoque físico real disponível no momento: **{estoque_real_disponivel} unidades**")
+                    
+                    if st.button("💾 Gravar Consumo do Funcionário", type="primary", key="btn_save_staff_cons"):
+                        if qtd_retirada <= estoque_real_disponivel:
+                            novo_consumo_linha = pd.DataFrame([{"Data": datetime.now().strftime("%Y-%m-%d"), "Responsavel": quem_consumiu, "Item": produto_retirado, "Quantidade": int(qtd_retirada), "Valor Total": preco_venda_prod * int(qtd_retirada)}])
+                            consumo_interno_atualizado = pd.concat([consumo_interno_df, novo_consumo_linha], ignore_index=True)
+                            consumo_interno_atualizado.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
+                            st.success(f"✅ Consumo de {qtd_retirada}x '{produto_retirado}' registrado!")
+                            time.sleep(1.2)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Erro: Quantidade insuficiente no estoque! Apenas {estoque_real_disponivel} unidades disponíveis.")
+            else:
+                # Campo de Vale Aleatório em Dinheiro
+                valor_vale_livre = st.number_input("Digite o Valor Adiantado do Vale (R$):", min_value=1.0, value=20.0, step=5.0, key="num_vale_val")
+                if st.button("💾 Registrar Vale de Adiantamento", type="primary", key="btn_save_vale_staff"):
+                    novo_vale_linha = pd.DataFrame([{"Data": datetime.now().strftime("%Y-%m-%d"), "Responsavel": quem_consumiu, "Item": "VALE EM DINHEIRO", "Quantidade": 1, "Valor Total": float(valor_vale_livre)}])
+                    consumo_interno_atualizado = pd.concat([consumo_interno_df, novo_vale_linha], ignore_index=True)
+                    consumo_interno_atualizado.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
+                    st.success(f"✅ Vale adiantado de R$ {valor_vale_livre:.2f} gravado na folha de {quem_consumiu.upper()}!")
+                    time.sleep(1.2)
+                    st.rerun()
 
         with col_staff2:
-            st.subheader("🗑️ Cancelar / Estornar Consumo Errado")
-            # AJUSTE CONFORME SOLICITAÇÃO: Removida a trava do admin, agora o gerente também acessa o botão de remover consumo errado
+            st.subheader("🗑️ Cancelar / Estornar Lançamento Errado")
             if not consumo_interno_df.empty:
                 consumo_visivel_df = consumo_interno_df.copy()
                 consumo_visivel_df.insert(0, "ID_Consumo", consumo_visivel_df.index)
                 
-                lista_consumos_cancelar = [f"{idx} - {row['Responsavel']} pegou {row['Quantidade']}x {row['Item']}" for idx, row in consumo_visivel_df.iterrows()]
+                lista_consumos_cancelar = [f"{idx} - {row['Responsavel']}: {row['Item']} | Total: R$ {row['Valor Total']:.2f}" for idx, row in consumo_visivel_df.iterrows()]
                 consumo_selecionado_str = st.selectbox("Selecione o registro para estornar:", lista_consumos_cancelar, key="sb_cancel_cons")
                 
-                if st.button("❌ Cancelar Consumo Selecionado", use_container_width=True, key="btn_delete_staff_item"):
+                if st.button("❌ Cancelar Item Selecionado", use_container_width=True, key="btn_delete_staff_item"):
                     index_excluir = int(consumo_selecionado_str.split(" - ")[0])
                     item_deletado = consumo_interno_df.iloc[index_excluir]
                     
-                    # Remove a linha e salva (estoque sobe de volta automaticamente!)
                     consumo_interno_df = consumo_interno_df.drop(index_excluir).reset_index(drop=True)
                     consumo_interno_df.to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
                     
-                    st.success(f"🗑️ O consumo foi anulado! {int(item_deletado['Quantidade'])} unidades do produto '{item_deletado['Item']}' voltaram para o estoque.")
+                    st.success(f"🗑️ O lançamento foi anulado! Caso tenha sido um produto, o estoque já foi restabelecido.")
                     time.sleep(1.2)
                     st.rerun()
             else:
-                st.info("Nenhum consumo registrado para cancelamento.")
+                st.info("Nenhum consumo ou vale registrado para cancelamento.")
                     
         st.markdown("---")
-        st.markdown("#### 📋 Extrato Geral de Consumo da Equipe")
+        st.markdown("#### 📋 Extrato Geral de Retiradas e Vales da Equipe")
         extrato_exibicao = pd.read_csv(ARQUIVO_CONSUMO_INTERNO, encoding='utf-8')
         if not extrato_exibicao.empty:
             st.dataframe(extrato_exibicao.sort_index(ascending=False), use_container_width=True, hide_index=True)
         else:
-            st.info("Nenhum consumo registrado para a equipe nesta semana.")
+            st.info("Nenhum consumo ou vale registrado para a equipe nesta semana.")
             
         if st.session_state["perfil"] == "admin":
             if st.button("⚠️ Limpar Extrato da Semana (Apenas Admin)", key="btn_clear_staff_week"):
@@ -879,7 +883,7 @@ elif menu == "📄 Emitir Relatórios":
             
             pdf.set_font("Arial", "B", 11)
             pdf.set_fill_color(240, 240, 240)
-            pdf.cell(0, 7, "1. RESUMO FINANCEIRO GERAL", ln=1, fill=True)
+            pdf.cell(0, 7, "1. RESULO FINANCEIRO GERAL", ln=1, fill=True)
             pdf.set_font("Arial", "", 10)
             pdf.cell(95, 6, f" Faturamento Bruto Balcao: R$ {faturamento_tot:.2f}", border=1)
             pdf.cell(95, 6, f" Total de Saidas (Gastos): R$ {gastos_tot:.2f}", border=1, ln=1)
