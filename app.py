@@ -6,13 +6,7 @@ import time
 import zipfile
 import io
 import base64
-
-# Força a instalação e uso estrito da biblioteca fpdf2 (moderna)
-try:
-    from fpdf import FPDF
-except ImportError:
-    os.system("pip install fpdf2")
-    from fpdf import FPDF
+from fpdf import FPDF
 
 # Configuração da página da Barbearia com o nome oficial completo
 st.set_page_config(page_title="O Chefão Barbearia e Conveniência", layout="wide", initial_sidebar_state="expanded")
@@ -92,7 +86,7 @@ def validar_token(token):
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
     st.session_state["perfil"] = None
-    st.session_state["permissoes_usuario"] = PERMISSORE_PADRAO if "PERMISSORE_PADRAO" in locals() else PERMISSOES_PADRAO
+    st.session_state["permissoes_usuario"] = PERMISSOES_PADRAO
     st.session_state["carrinho_comanda"] = []
 
 # Checagem automática do F5
@@ -155,7 +149,7 @@ if st.sidebar.button("🚪 Sair com Segurança", use_container_width=True):
     st.query_params.clear()
     st.rerun()
 
-# --- CLASSE AUXILIAR DO PDF (CORRIGIDA E PADRONIZADA) ---
+# --- CLASSE AUXILIAR DO PDF ---
 class PDFRelatorio(FPDF):
     def header(self):
         self.set_font("Arial", "B", 16)
@@ -170,7 +164,7 @@ class PDFRelatorio(FPDF):
         self.set_font("Arial", "I", 8)
         self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
 
-# ---------------- MÓDULO 1: COMANDA ELETRÔNICA ----------------
+# ---------------- MÓDULO 1: COMANDA ELETRÔNICA (ATUALIZADO COM REMOÇÃO DE ITEM) ----------------
 if menu == "💸 Abrir Comanda (Vendas)":
     st.header("📋 Caixa e Comanda Eletrônica - O Chefão")
     col_com1, col_com2 = st.columns([1, 1], gap="large")
@@ -200,6 +194,19 @@ if menu == "💸 Abrir Comanda (Vendas)":
                 valor_total_comanda = df_temp_carrinho["Valor Total"].sum()
                 st.markdown(f"### Total Geral: R$ {valor_total_comanda:.2f}")
                 st.markdown("---")
+                
+                # NOVO CAMPO: SELETOR PARA EXCLUIR ITEM LANÇADO ERRADO
+                st.subheader("🗑️ Remover Item Incorreto")
+                lista_nomes_carrinho = [f"{i} - {item['Item']} ({item['Tipo']})" for i, item in enumerate(st.session_state["carrinho_comanda"])]
+                item_remover_index_str = st.selectbox("Selecione o item para retirar da lista:", lista_nomes_carrinho)
+                if st.button("❌ Remover Item Selecionado", use_container_width=True):
+                    index_remover = int(item_remover_index_str.split(" - ")[0])
+                    item_removido_nome = st.session_state["carrinho_comanda"].pop(index_remover)
+                    st.toast(f"'{item_removido_nome['Item']}' removido do resumo!")
+                    time.sleep(0.5)
+                    st.rerun()
+                
+                st.markdown("---")
                 c_f1, c_f2 = st.columns(2)
                 with c_f1:
                     forma_pagamento = st.selectbox("Forma de Recebimento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
@@ -221,7 +228,7 @@ if menu == "💸 Abrir Comanda (Vendas)":
                     st.success(f"✅ Venda de R$ {valor_total_comanda:.2f} processada!")
                     time.sleep(1.2)
                     st.rerun()
-                if st.button("🗑️ Esvaziar Comanda", use_container_width=True):
+                if st.button("🗑️ Esvaziar Comanda Completa", use_container_width=True):
                     st.session_state["carrinho_comanda"] = []
                     st.rerun()
             else: st.info("A comanda eletrônica está limpa.")
@@ -470,7 +477,7 @@ elif menu == "⚙️ Gerenciar Catálogo":
                     if st.button("Atualizar Preço", type="primary", use_container_width=True):
                         servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
                         servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-                        st.success("🎉 Preço atualizado!")
+                        st.success("🎉 Preço updated!")
                         time.sleep(1.2)
                         st.rerun()
                 with c_btn_s2:
@@ -711,7 +718,7 @@ elif menu == "📊 Painel de Relatórios":
     with tab_rel3:
         if not vendas_filtradas.empty: st.line_chart(vendas_filtradas.groupby("Data")["Valor Total"].sum())
 
-# ---------------- MÓDULO 11: EMISSÃO DE RELATÓRIOS OFICIAIS EM PDF (CORRIGIDO) ----------------
+# ---------------- MÓDULO 11: EMISSÃO DE RELATÓRIOS OFICIAIS EM PDF ----------------
 elif menu == "📄 Emitir Relatórios":
     st.header("📄 Emissão de Relatórios Oficiais (PDF)")
     st.write("Filtre o período comercial desejado para gerar e exportar o documento consolidado do caixa.")
