@@ -374,25 +374,20 @@ elif menu == "✏️ Corrigir Lançamentos":
             else: st.info("Nenhum fechamento registrado no sistema.")
         else: st.error("🚫 Acesso Negado: Apenas o Admin pode anular um fechamento.")
 
-# ---------------- MÓDULO 5: FECHAMENTO DE DIA (ATUALIZADO COM DATA RETROATIVA PARA ADMIN) ----------------
+# ---------------- MÓDULO 5: FECHAMENTO DE DIA ----------------
 elif menu == "🔒 Fechamento de Dia":
     st.header("🔒 Fechamento de Caixa Diário - Auditoria")
     tab_f_1, tab_f_2 = st.tabs(["📝 Realizar Fechamento de Hoje", "📋 Histórico de Auditoria"])
-    
-    # TRAVA DE SEGURANÇA NA DATA DO FECHAMENTO: Admin escolhe, gerente trava em hoje
     if st.session_state["perfil"] == "admin":
         data_fech_dt = st.date_input("📅 Data do Caixa Fechado:", datetime.now())
         data_final_fechamento = data_fech_dt.strftime("%Y-%m-%d")
     else:
         data_final_fechamento = datetime.now().strftime("%Y-%m-%d")
         st.info(f"Focando fechamento para a data de hoje: **{data_final_fechamento}**")
-        
     with tab_f_1:
         vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
-        # Calcula com base na data final escolhida (seja hoje ou a data retroativa que o Admin colocou)
         vendas_do_dia = vendas_df[vendas_df["Data"] == data_final_fechamento]
         total_sistema_hoje = vendas_do_dia["Valor Total"].sum()
-        
         col_fe1, col_fe2 = st.columns(2, gap="large")
         with col_fe1:
             with st.container(border=True):
@@ -658,6 +653,7 @@ elif menu == "👤 Gerenciar Usuários":
                     with st.container(border=True):
                         st.subheader("🗑️ Remover Conta")
                         if st.button("Bloquear e Excluir Usuário", use_container_width=True, key="btn_del_user"):
+                            usuarios_df = os.remove(ARQUIVO_USUARIOS)
                             usuarios_df = usuarios_df[usuarios_df["Usuario"] != usuario_selecionado]
                             usuarios_df.to_csv(ARQUIVO_USUARIOS, index=False, encoding='utf-8')
                             st.success(f"Removido!")
@@ -666,37 +662,90 @@ elif menu == "👤 Gerenciar Usuários":
             else: st.info("Nenhum usuário cadastrado para alteração no momento.")
     else: st.error("🚨 ÁREA RESTRITA AO SUPER ADMINISTRADOR.")
 
-# ---------------- MÓDULO 10: PAINEL DE RELATÓRIOS ----------------
+# ---------------- MÓDULO 10: PAINEL DE RELATÓRIOS (TOTALMENTE SEPARADO E INTELIGENTE) ----------------
 elif menu == "📊 Painel de Relatórios":
-    st.header("📊 Dashboard Financeiro - O Chefão")
+    st.header("📊 Dashboard Financeiro Estruturado - O Chefão")
+    
+    # Formatação Numérica Segura
     vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
     vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
     gastos_df["Valor (R$)"] = pd.to_numeric(gastos_df["Valor (R$)"], errors='coerce').fillna(0)
     consumo_interno_df["Valor Total"] = pd.to_numeric(consumo_interno_df["Valor Total"], errors='coerce').fillna(0)
-    consumo_interno_df["Quantidade"] = pd.to_numeric(consumo_interno_df["Quantidade"], errors='coerce').fillna(0)
+    
     vendas_df["Ano_Mes"] = vendas_df["Data"].str[:7]
     gastos_df["Ano_Mes"] = gastos_df["Data"].str[:7]
+    
     meses_disponiveis = sorted(list(set(vendas_df["Ano_Mes"].dropna().tolist() + gastos_df["Ano_Mes"].dropna().tolist())), reverse=True)
     mes_atual_string = datetime.now().strftime("%Y-%m")
     if mes_atual_string not in meses_disponiveis: meses_disponiveis.insert(0, mes_atual_string)
+        
     mes_selecionado = st.selectbox("📅 Selecione o Mês de Análise:", meses_disponiveis, index=0)
-    vendas_filtradas = vendas_df[vendas_df["Ano_Mes"] == mes_selecionado]
-    gastos_filtrados = gastos_df[gastos_df["Ano_Mes"] == mes_selecionado]
-    faturamento_mes = vendas_filtradas["Valor Total"].sum()
-    total_gastos_mes = gastos_filtrados["Valor (R$)"].sum()
-    lucro_liquido_mes = faturamento_mes - total_gastos_mes
     
-    c1, c2, c3 = st.columns(3)
-    c1.metric(f"💰 FATURAMENTO ({mes_selecionado})", f"R$ {faturamento_mes:.2f}")
-    c2.metric(f"📉 GASTOS ({mes_selecionado})", f"R$ {total_gastos_mes:.2f}")
-    c3.metric(f"🔥 LUCRO LÍQUIDO ({mes_selecionado})", f"R$ {lucro_liquido_mes:.2f}")
+    # DataFrames Filtrados do Mês
+    v_filtradas = vendas_df[vendas_df["Ano_Mes"] == mes_selecionado]
+    g_filtrados = gastos_df[gastos_df["Ano_Mes"] == mes_selecionado]
     
+    # Mapeamentos para custos e comissões da Conveniência
+    mapa_custo_produto = produtos_df.set_index("Nome do Produto")["Preço de Custo"].to_dict()
+    mapa_comissao_produto = produtos_df.set_index("Nome do Produto")["Comissão Barbeiro (R$)"].to_dict()
+    mapa_comissao_barbeiros = barbeiros_df.set_index("Nome")["Comissão (%)"].to_dict()
+
+    # --- CÁLCULO 1: SEÇÃO BARBEARIA (SERVIÇOS) ---
+    v_servicos = v_filtradas[v_filtradas["Tipo"] == "Serviço"]
+    faturamento_barbearia = v_servicos["Valor Total"].sum()
+    
+    comissao_servicos_paga = 0.0
+    for _, venda_s in v_servicos.iterrows():
+        pct_b = float(mapa_comissao_barbeiros.get(venda_s["Barbeiro"], 50.0)) / 100.0
+        comissao_servicos_paga += float(venda_s["Valor Total"]) * pct_b
+    lucro_barbearia_mes = faturamento_barbearia - comissao_servicos_paga
+
+    # --- CÁLCULO 2: SEÇÃO CONVENIÊNCIA (PRODUTOS) ---
+    v_produtos = v_filtradas[v_filtradas["Tipo"] == "Produto"]
+    faturamento_conveniencia = v_produtos["Valor Total"].sum()
+    
+    custo_mercadoria_vendida = 0.0
+    comissao_produtos_paga = 0.0
+    for _, venda_p in v_produtos.iterrows():
+        qtd = float(venda_p["Quantidade"])
+        custo_mercadoria_vendida += float(mapa_custo_produto.get(venda_p["Item"], 0.0)) * qtd
+        comissao_produtos_paga += float(mapa_comissao_produto.get(venda_p["Item"], 0.0)) * qtd
+        
+    lucro_conveniencia_mes = faturamento_conveniencia - custo_mercadoria_vendida - comissao_produtos_paga
+
+    # --- CÁLCULO 3: GERAL DA EMPRESA ---
+    faturamento_total_geral = faturamento_barbearia + faturamento_conveniencia
+    total_despesas_fixas = g_filtrados["Valor (R$)"].sum()
+    
+    # Lucro Líquido Real desconta absolutamente tudo do caixa (inclusive os gastos de infraestrutura)
+    lucro_liquido_geral_real = faturamento_total_geral - comissao_servicos_paga - comissao_produtos_paga - custo_mercadoria_vendida - total_despesas_fixas
+
+    # --- EXIBIÇÃO EM BLOCOS NO DASHBOARD ---
+    st.markdown("### 💈 1. Performance da Barbearia (Serviços)")
+    c_b1, c_b2 = st.columns(2)
+    c_b1.metric("Faturamento Bruto Serviços", f"R$ {faturamento_barbearia:.2f}")
+    c_b2.metric("Lucro Líquido Serviços (Apenas Caixa)", f"R$ {lucro_barbearia_mes:.2f}", help="Faturamento dos cortes subtraindo a comissão da equipe.")
+    
+    st.markdown("---")
+    st.markdown("### 🥤 2. Performance da Conveniência (Produtos)")
+    c_c1, c_c2, c_c3 = st.columns(3)
+    c_c1.metric("Faturamento Bruto Bebidas/Pomadas", f"R$ {faturamento_conveniencia:.2f}")
+    c_c2.metric("Custo de Reposição (CMV)", f"R$ {custo_mercadoria_vendida:.2f}", help="O preço de custo real do que saiu da prateleira.")
+    c_c3.metric("Lucro Líquido Conveniência", f"R$ {lucro_conveniencia_mes:.2f}", help="Faturamento bruto abatendo o preço de custo e comissões extras.")
+    
+    st.markdown("---")
+    st.markdown("### 👑 3. Resultado Consolidado de O Chefão (Geral)")
+    c_g1, c_g2, c_g3 = st.columns(3)
+    c_g1.metric("FATURAMENTO BRUTO TOTAL", f"R$ {faturamento_total_geral:.2f}")
+    c_g2.metric("SAÍDAS / GASTOS GERAIS", f"R$ {total_despesas_fixas:.2f}")
+    c_g3.metric("🔥 LUCRO LÍQUIDO REAL DA EMPRESA", f"R$ {lucro_liquido_geral_real:.2f}", help="O dinheiro limpo que sobra para o bolso do dono após pagar barbeiros, reposição de estoque e contas fixas.")
+
     st.markdown("<br>", unsafe_allow_html=True)
     tab_rel1, tab_rel2, tab_rel3 = st.tabs(["💸 Fechamento Semanal & Comissões", "🥤 Consumo Interno (Staff)", "📅 Visão Mensal Expandida"])
+    
     with tab_rel1:
         if not barbeiros_df.empty:
             relatorio_comissao = []
-            mapa_comissao_produto = produtos_df.set_index("Nome do Produto")["Comissão Barbeiro (R$)"].to_dict()
             mapa_desconto_consumo = consumo_interno_df.groupby("Responsavel")["Valor Total"].sum().to_dict()
             for _, b in barbeiros_df.iterrows():
                 nome_b = b["Nome"]
@@ -731,7 +780,7 @@ elif menu == "📊 Painel de Relatórios":
                 pd.DataFrame(columns=["Data", "Responsavel", "Item", "Quantidade", "Valor Total"]).to_csv(ARQUIVO_CONSUMO_INTERNO, index=False, encoding='utf-8')
                 st.rerun()
     with tab_rel3:
-        if not vendas_filtradas.empty: st.line_chart(vendas_filtradas.groupby("Data")["Valor Total"].sum())
+        if not v_filtradas.empty: st.line_chart(v_filtradas.groupby("Data")["Valor Total"].sum())
 
 # ---------------- MÓDULO 11: EMISSÃO DE RELATÓRIOS OFICIAIS EM PDF ----------------
 elif menu == "📄 Emitir Relatórios":
@@ -741,7 +790,6 @@ elif menu == "📄 Emitir Relatórios":
     with st.container(border=True):
         tipo_filtro = st.radio("Selecione o Intervalo de Tempo:", ["Por Dia Específico", "Por Mês Inteiro", "Período Customizado (Trimestral/Semestral)"])
         
-        # Lógica de definição de datas com base no seletor
         if tipo_filtro == "Por Dia Específico":
             dia_sel = st.date_input("Escolha o Dia:", datetime.now())
             data_inicio = dia_sel.strftime("%Y-%m-%d")
@@ -758,33 +806,26 @@ elif menu == "📄 Emitir Relatórios":
         st.markdown("---")
         
         if st.button("🧱 Processar e Compilar Relatório PDF", type="primary", use_container_width=True):
-            # Filtragem Cirúrgica dos DataFrames
             vendas_df["Data"] = vendas_df["Data"].astype(str)
             v_filtradas = vendas_df[(vendas_df["Data"] >= data_inicio) & (vendas_df["Data"] <= data_fim)]
-            
             gastos_df["Data"] = gastos_df["Data"].astype(str)
             g_filtrados = gastos_df[(gastos_df["Data"] >= data_inicio) & (gastos_df["Data"] <= data_fim)]
-            
             fechamentos_df["Data"] = fechamentos_df["Data"].astype(str)
             f_filtrados = fechamentos_df[(fechamentos_df["Data"] >= data_inicio) & (fechamentos_df["Data"] <= data_fim)]
 
-            # Cálculos consolidados para exibição estruturada
             faturamento_tot = pd.to_numeric(v_filtradas["Valor Total"], errors='coerce').sum()
             gastos_tot = pd.to_numeric(g_filtrados["Valor (R$)"], errors='coerce').sum()
             saldo_liq = faturamento_tot - gastos_tot
             
-            # Montagem do PDF utilizando FPDF2
             pdf = PDFRelatorio()
             pdf.add_page()
             
-            # Bloco 1: Informações Gerais do Período
             pdf.set_font("Arial", "B", 12)
             pdf.cell(0, 8, f"Periodo Auditado: {data_inicio} ate {data_fim}", ln=1)
             pdf.set_font("Arial", "", 10)
             pdf.cell(0, 6, f"Emitido por: {st.session_state['perfil'].upper()} em {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=1)
             pdf.ln()
             
-            # Bloco 2: Resumo Financeiro
             pdf.set_font("Arial", "B", 11)
             pdf.set_fill_color(240, 240, 240)
             pdf.cell(0, 7, "1. RESUMO FINANCEIRO GERAL", ln=1, fill=True)
@@ -795,7 +836,6 @@ elif menu == "📄 Emitir Relatórios":
             pdf.cell(190, 6, f" Saldo Liquido do Periodo: R$ {saldo_liq:.2f}", border=1, ln=1)
             pdf.ln()
             
-            # Bloco 3: Movimentação de Atendimentos e Categorias
             pdf.set_font("Arial", "B", 11)
             pdf.cell(0, 7, "2. DETALHAMENTO POR CATEGORIA DE ATENDIMENTO", ln=1, fill=True)
             pdf.set_font("Arial", "", 10)
@@ -805,7 +845,6 @@ elif menu == "📄 Emitir Relatórios":
             pdf.cell(95, 6, f" Faturamento com Produtos (Conveniencia): R$ {produtos_tot:.2f}", border=1, ln=1)
             pdf.ln()
             
-            # Bloco 4: Divisão por Meios de Recebimento
             pdf.set_font("Arial", "B", 11)
             pdf.cell(0, 7, "3. RECEBIMENTOS POR MEIO DE PAGAMENTO", ln=1, fill=True)
             pdf.set_font("Arial", "", 10)
@@ -815,7 +854,6 @@ elif menu == "📄 Emitir Relatórios":
             pdf.ln()
             pdf.ln()
             
-            # Bloco 5: Histórico de Quebras de Caixa
             pdf.set_font("Arial", "B", 11)
             pdf.cell(0, 7, "4. AUDITORIA DE FECHAMENTOS DE CAIXA DIARIOS", ln=1, fill=True)
             pdf.set_font("Arial", "B", 9)
@@ -833,7 +871,6 @@ elif menu == "📄 Emitir Relatórios":
             else:
                 pdf.cell(190, 6, "Nenhum fechamento auditado gravado no intervalo selecionado.", border=1, ln=1, align="C")
                 
-            # Exportação segura do buffer binário
             pdf_output = pdf.output(dest='S')
             st.download_button(
                 label="📥 Baixar Relatório Gerado (PDF)",
