@@ -164,7 +164,7 @@ class PDFRelatorio(FPDF):
         self.set_font("Arial", "I", 8)
         self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
 
-# ---------------- MÓDULO 1: COMANDA ELETRÔNICA (ATUALIZADO COM REMOÇÃO DE ITEM) ----------------
+# ---------------- MÓDULO 1: COMANDA ELETRÔNICA (ATUALIZADO COM DATA RETROATIVA PARA ADMIN) ----------------
 if menu == "💸 Abrir Comanda (Vendas)":
     st.header("📋 Caixa e Comanda Eletrônica - O Chefão")
     col_com1, col_com2 = st.columns([1, 1], gap="large")
@@ -195,14 +195,13 @@ if menu == "💸 Abrir Comanda (Vendas)":
                 st.markdown(f"### Total Geral: R$ {valor_total_comanda:.2f}")
                 st.markdown("---")
                 
-                # NOVO CAMPO: SELETOR PARA EXCLUIR ITEM LANÇADO ERRADO
                 st.subheader("🗑️ Remover Item Incorreto")
                 lista_nomes_carrinho = [f"{i} - {item['Item']} ({item['Tipo']})" for i, item in enumerate(st.session_state["carrinho_comanda"])]
                 item_remover_index_str = st.selectbox("Selecione o item para retirar da lista:", lista_nomes_carrinho)
                 if st.button("❌ Remover Item Selecionado", use_container_width=True):
                     index_remover = int(item_remover_index_str.split(" - ")[0])
                     item_removido_nome = st.session_state["carrinho_comanda"].pop(index_remover)
-                    st.toast(f"'{item_removido_nome['Item']}' removido do resumo!")
+                    st.toast(f"'{item_removido_nome['Item']}' removido!")
                     time.sleep(0.5)
                     st.rerun()
                 
@@ -212,12 +211,20 @@ if menu == "💸 Abrir Comanda (Vendas)":
                     forma_pagamento = st.selectbox("Forma de Recebimento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
                     lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
                     barbeiro_venda = st.selectbox("Barbeiro Executor:", lista_barbeiros_sistema)
-                with c_f2: cliente = st.text_input("Identificação do Cliente:", value="Avulso")
+                with c_f2: 
+                    cliente = st.text_input("Identificação do Cliente:", value="Avulso")
+                    
+                    # TRAVA EXCLUSIVA OPÇÃO 2: Apenas admin altera a data, gerente fica fixo em hoje
+                    if st.session_state["perfil"] == "admin":
+                        data_venda_dt = st.date_input("📅 Data do Lançamento:", datetime.now())
+                        data_final_comanda = data_venda_dt.strftime("%Y-%m-%d")
+                    else:
+                        data_final_comanda = datetime.now().strftime("%Y-%m-%d")
+
                 if st.button("🚀 Finalizar Conta e Registrar", type="primary", use_container_width=True):
-                    data_atual = datetime.now().strftime("%Y-%m-%d")
                     novas_linhas = []
                     for item_c in st.session_state["carrinho_comanda"]:
-                        item_c["Data"] = data_atual
+                        item_c["Data"] = data_final_comanda
                         item_c["Forma de Pagamento"] = forma_pagamento
                         item_c["Barbeiro"] = barbeiro_venda
                         item_c["Cliente"] = cliente
@@ -225,7 +232,7 @@ if menu == "💸 Abrir Comanda (Vendas)":
                     vendas_df = pd.concat([vendas_df, pd.DataFrame(novas_linhas)], ignore_index=True)
                     vendas_df.to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
                     st.session_state["carrinho_comanda"] = []
-                    st.success(f"✅ Venda de R$ {valor_total_comanda:.2f} processada!")
+                    st.success(f"✅ Venda de R$ {valor_total_comanda:.2f} lançada para o dia {data_final_comanda}!")
                     time.sleep(1.2)
                     st.rerun()
                 if st.button("🗑️ Esvaziar Comanda Completa", use_container_width=True):
@@ -827,7 +834,7 @@ elif menu == "📄 Emitir Relatórios":
                 mime="application/pdf",
                 use_container_width=True
             )
-            st.success("✨ Relatório gerado! Clique no botão acima para salvar o PDF.")
+            st.success("✨ Relatório generated! Clique no botão acima para salvar o PDF.")
 
 # ---------------- MÓDULO 12: TELA DE BACKUP UNIFICADO ----------------
 elif menu == "💾 Backup do Sistema":
