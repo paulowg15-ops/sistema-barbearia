@@ -7,6 +7,13 @@ import zipfile
 import io
 import base64
 
+# Tenta importar fpdf para geração de relatórios. Se não houver, avisa para adicionar no requirements.txt
+try:
+    from fpdf import FPDF
+except ImportError:
+    os.system("pip install fpdf2")
+    from fpdf import FPDF
+
 # Configuração da página da Barbearia com o nome oficial completo
 st.set_page_config(page_title="O Chefão Barbearia e Conveniência", layout="wide", initial_sidebar_state="expanded")
 
@@ -63,7 +70,7 @@ inicializar_banco_de_dados()
 
 usuarios_df = pd.read_csv(ARQUIVO_USUARIOS, encoding='utf-8')
 
-PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "🔒 Fechamento de Dia", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "💾 Backup do Sistema", "⚙️ Configurações"]
+PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "🔒 Fechamento de Dia", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "📄 Emitir Relatórios", "💾 Backup do Sistema", "⚙️ Configurações"]
 PERMISSOES_PADRAO = ["💸 Abrir Comanda (Vendas)", "📦 Estoque & Serviços"]
 
 # --- SISTEMA DE LOGIN MULTI-USUÁRIO (TOKEN VIA URL) ---
@@ -79,8 +86,7 @@ def validar_token(token):
         validade = datetime.strptime(validade_str, "%Y-%m-%d %H:%M:%S")
         if datetime.now() <= validade:
             return usuario
-    except:
-        pass
+    except: pass
     return None
 
 if "autenticado" not in st.session_state:
@@ -89,7 +95,7 @@ if "autenticado" not in st.session_state:
     st.session_state["permissoes_usuario"] = PERMISSOES_PADRAO
     st.session_state["carrinho_comanda"] = []
 
-# Checagem automática do F5 (lendo o token da URL individual)
+# Checagem automática do F5
 if not st.session_state["autenticado"] and "token" in st.query_params:
     usr_decodificado = validar_token(st.query_params["token"])
     if usr_decodificado:
@@ -113,19 +119,14 @@ if not st.session_state["autenticado"]:
             if st.button("🔓 Acessar Sistema", type="primary", use_container_width=True):
                 usuarios_df["Usuario_Lower"] = usuarios_df["Usuario"].str.strip().str.lower()
                 usuario_valido = usuarios_df[(usuarios_df["Usuario_Lower"] == input_usuario) & (usuarios_df["Senha"] == input_senha)]
-                
                 if not usuario_valido.empty:
                     st.session_state["autenticado"] = True
                     st.session_state["perfil"] = input_usuario
-                    
-                    # Salva o token na barra de endereços (URL) para proteger o F5 sem bloquear outros
                     st.query_params["token"] = gerar_token(input_usuario)
-                    
                     perm_string = usuario_valido.iloc[0]["Permissoes"]
                     st.session_state["permissoes_usuario"] = PERMISSOES_MASTER if perm_string == "TODAS" else perm_string.split("|")
                     st.rerun()
-                else:
-                    st.error("Usuário ou senha incorretos!")
+                else: st.error("Usuário ou senha incorretos!")
     st.stop()
 
 # Carregar tabelas completas
@@ -143,18 +144,34 @@ fechamentos_df = pd.read_csv(ARQUIVO_FECHAMENTOS, encoding='utf-8').dropna(how='
 st.sidebar.title("✂️ O Chefão")
 st.sidebar.write(f"Conectado como: **{st.session_state['perfil'].upper()}**")
 st.sidebar.markdown("---")
-
 menus_validos = st.session_state["permissoes_usuario"] if st.session_state["permissoes_usuario"] else PERMISSOES_PADRAO
 menu = st.sidebar.radio("Navegação:", menus_validos)
-
 st.sidebar.markdown("---")
 if st.sidebar.button("🚪 Sair com Segurança", use_container_width=True):
     st.session_state["autenticado"] = False
     st.session_state["perfil"] = None
     st.session_state["permissoes_usuario"] = []
     st.session_state["carrinho_comanda"] = []
-    st.query_params.clear() # Limpa o link para deslogar de verdade
+    st.query_params.clear()
     st.rerun()
+
+# --- CLASSE AUXILIAR DO PDF ---
+class PDFRelatorio(FPDF):
+    def header(self):
+        self.set_font("Arial", "B", 16)
+        self.set_text_color(44, 62, 80)
+        self.cell(0, 10, "O CHEFAO BARBEARIA E CONVENIENCIA", ln=True, align="C")
+        self.set_font("Arial", "I", 10)
+        self.set_text_color(127, 140, 141)
+        self.cell(0, 5, "Relatorio Oficial de Movimentacao de Caixa e Auditoria", ln=True, align="C")
+        self.ln(5)
+        self.line(10, 26, 200, 26)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font("Arial", "I", 8)
+        self.set_text_color(127, 140, 141)
+        self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
 
 # ---------------- MÓDULO 1: COMANDA ELETRÔNICA ----------------
 if menu == "💸 Abrir Comanda (Vendas)":
@@ -191,8 +208,7 @@ if menu == "💸 Abrir Comanda (Vendas)":
                     forma_pagamento = st.selectbox("Forma de Recebimento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"])
                     lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
                     barbeiro_venda = st.selectbox("Barbeiro Executor:", lista_barbeiros_sistema)
-                with c_f2:
-                    cliente = st.text_input("Identificação do Cliente:", value="Avulso")
+                with c_f2: cliente = st.text_input("Identificação do Cliente:", value="Avulso")
                 if st.button("🚀 Finalizar Conta e Registrar", type="primary", use_container_width=True):
                     data_atual = datetime.now().strftime("%Y-%m-%d")
                     novas_linhas = []
@@ -227,8 +243,7 @@ elif menu == "💳 Clube de Assinaturas":
             with col_as2:
                 valor_ass = st.number_input("Taxa de Adesão Mensal (R$):", min_value=0.0, value=110.0)
                 data_pago = st.date_input("Data de Início:", datetime.now())
-            with col_as3:
-                forma_pago_ass = st.selectbox("Canal de Recebimento:", ["Pix", "Dinheiro", "Cartão"])
+            with col_as3: forma_pago_ass = st.selectbox("Canal de Recebimento:", ["Pix", "Dinheiro", "Cartão"])
             if st.button("🔥 Ativar Plano", type="primary", use_container_width=True):
                 if nome_ass != "":
                     venc_calc = (data_pago + timedelta(days=30)).strftime("%Y-%m-%d")
@@ -306,7 +321,6 @@ elif menu == "✏️ Corrigir Lançamentos":
             col_ed1, col_ed2 = st.columns(2, gap="large")
             with col_ed1:
                 with st.container(border=True):
-                    st.subheader("✏️ Editar Lançamento")
                     id_selecionado = st.selectbox("Selecione o ID do lançamento:", vendas_visivel_df["ID_Lancamento"].tolist())
                     linha_original = vendas_df.iloc[id_selecionado]
                     lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
@@ -323,7 +337,6 @@ elif menu == "✏️ Corrigir Lançamentos":
                         st.rerun()
             with col_ed2:
                 with st.container(border=True):
-                    st.subheader("🗑️ Apagar Lançamento")
                     id_remover = st.selectbox("Selecione o ID para remover:", vendas_visivel_df["ID_Lancamento"].tolist())
                     if st.session_state["perfil"] == "admin":
                         if st.button("❌ Excluir Lançamento Errado", use_container_width=True):
@@ -417,8 +430,7 @@ elif menu == "👥 Cadastrar Barbeiro":
                         time.sleep(1.2)
                         st.rerun()
                 else: st.error("🚫 Apenas o admin pode demitir/remover um profissional.")
-    with col_cad2:
-        st.dataframe(barbeiros_df, use_container_width=True, hide_index=True)
+    with col_cad2: st.dataframe(barbeiros_df, use_container_width=True, hide_index=True)
 
 # ---------------- MÓDULO 7: ESTOQUE & SERVIÇOS ----------------
 elif menu == "📦 Estoque & Serviços":
@@ -461,7 +473,7 @@ elif menu == "⚙️ Gerenciar Catálogo":
                     if st.button("Atualizar Preço", type="primary", use_container_width=True):
                         servicos_df.loc[servicos_df["Nome do Serviço"] == servico_editar, "Preço (R$)"] = novo_preco_s
                         servicos_df.to_csv(ARQUIVO_SERVICOS, index=False, encoding='utf-8')
-                        st.success("🎉 Preço updated!")
+                        st.success("🎉 Preço atualizado!")
                         time.sleep(1.2)
                         st.rerun()
                 with c_btn_s2:
@@ -523,12 +535,11 @@ elif menu == "⚙️ Gerenciar Catálogo":
                     else: st.error("🚫 Bloqueado")
         with col_p_2: st.dataframe(produtos_df, use_container_width=True, hide_index=True)
 
-# ---------------- MÓDULO 9: GERENCIAR USUÁRIOS (BLINDADO CONTRA DUPLICIDADE) ----------------
+# ---------------- MÓDULO 9: GERENCIAR USUÁRIOS ----------------
 elif menu == "👤 Gerenciar Usuários":
     if st.session_state["perfil"] == "admin":
         st.header("👤 Gerenciamento de Usuários e Níveis de Acesso")
         tab_usr1, tab_usr2 = st.tabs(["➕ Criar Novo Perfil", "✏️ Editar ou Resetar Perfil Existente"])
-        
         with tab_usr1:
             col_u1, col_u2 = st.columns(2, gap="large")
             with col_u1:
@@ -536,8 +547,6 @@ elif menu == "👤 Gerenciar Usuários":
                     novo_usr = st.text_input("Nome do Usuário de Login (Sem espaços):", key="n_u_add").strip().lower()
                     nova_pwd = st.text_input("Definir Senha de Acesso:", type="password", key="n_p_add")
                     st.write("**Marque quais telas este usuário poderá ver:**")
-                    
-                    # Keys fixas e únicas para a aba de Adicionar
                     p_comanda = st.checkbox("💸 Abrir Comanda (Vendas)", value=True, key="add_comanda")
                     p_clube = st.checkbox("💳 Clube de Assinaturas", key="add_clube")
                     p_gastos = st.checkbox("📉 Lançar Gasto/Despesa", key="add_gastos")
@@ -548,9 +557,9 @@ elif menu == "👤 Gerenciar Usuários":
                     p_catalogo = st.checkbox("⚙️ Gerenciar Catálogo", key="add_catalogo")
                     p_ger_usr = st.checkbox("👤 Gerenciar Usuários", key="add_ger_usr")
                     p_relatorios = st.checkbox("📊 Painel de Relatórios", key="add_relatorios")
+                    p_emitir_r = st.checkbox("📄 Emitir Relatórios", key="add_emitir_r")
                     p_backup = st.checkbox("💾 Backup do Sistema", key="add_backup")
                     p_config = st.checkbox("⚙️ Configurações", key="add_config")
-                    
                     if st.button("💾 Gravar Novo Usuário", type="primary", use_container_width=True, key="btn_add_user"):
                         if novo_usr and nova_pwd:
                             if novo_usr not in usuarios_df["Usuario"].str.lower().tolist():
@@ -565,6 +574,7 @@ elif menu == "👤 Gerenciar Usuários":
                                 if p_catalogo: lista_p.append("⚙️ Gerenciar Catálogo")
                                 if p_ger_usr: lista_p.append("👤 Gerenciar Usuários")
                                 if p_relatorios: lista_p.append("📊 Painel de Relatórios")
+                                if p_emitir_r: lista_p.append("📄 Emitir Relatórios")
                                 if p_backup: lista_p.append("💾 Backup do Sistema")
                                 if p_config: lista_p.append("⚙️ Configurações")
                                 perm_formatada = "|".join(lista_p)
@@ -589,8 +599,6 @@ elif menu == "👤 Gerenciar Usuários":
                         st.markdown(f"#### 🔒 Resetar Senha: **{usuario_selecionado.upper()}**")
                         nova_senha_user = st.text_input("Nova Senha:", value=str(linha_user["Senha"]), key="n_p_edit_val")
                         st.markdown("#### ⚙️ Telas de Acesso")
-                        
-                        # Keys completas e totalmente separadas para a aba de Edição
                         e_comanda = st.checkbox("💸 Abrir Comanda", value=("💸 Abrir Comanda (Vendas)" in permissões_atuais), key="edit_comanda")
                         e_clube = st.checkbox("💳 Clube de Assinaturas", value=("💳 Clube de Assinaturas" in permissões_atuais), key="edit_clube")
                         e_gastos = st.checkbox("📉 Lançar Gasto", value=("📉 Lançar Gasto/Despesa" in permissões_atuais), key="edit_gastos")
@@ -601,6 +609,7 @@ elif menu == "👤 Gerenciar Usuários":
                         e_catalogo = st.checkbox("⚙️ Gerenciar Catálogo", value=("⚙️ Gerenciar Catálogo" in permissões_atuais), key="edit_catalogo")
                         e_ger_usr = st.checkbox("👤 Gerenciar Usuários", value=("👤 Gerenciar Usuários" in permissões_atuais), key="edit_ger_usr")
                         e_relatorios = st.checkbox("📊 Painel de Relatórios", value=("📊 Painel de Relatórios" in permissões_atuais), key="edit_relatorios")
+                        e_emitir_r = st.checkbox("📄 Emitir Relatórios", value=("📄 Emitir Relatórios" in permissões_atuais), key="edit_emitir_r")
                         e_backup = st.checkbox("💾 Backup do Sistema", value=("💾 Backup do Sistema" in permissões_atuais), key="edit_backup")
                         e_config = st.checkbox("⚙️ Configurações", value=("⚙️ Configurações" in permissões_atuais), key="edit_config")
                         
@@ -616,6 +625,7 @@ elif menu == "👤 Gerenciar Usuários":
                             if e_catalogo: lista_novas_p.append("⚙️ Gerenciar Catálogo")
                             if e_ger_usr: lista_novas_p.append("👤 Gerenciar Usuários")
                             if e_relatorios: lista_novas_p.append("📊 Painel de Relatórios")
+                            if e_emitir_r: lista_novas_p.append("📄 Emitir Relatórios")
                             if e_backup: lista_novas_p.append("💾 Backup do Sistema")
                             if e_config: lista_novas_p.append("⚙️ Configurações")
                             
@@ -704,7 +714,118 @@ elif menu == "📊 Painel de Relatórios":
     with tab_rel3:
         if not vendas_filtradas.empty: st.line_chart(vendas_filtradas.groupby("Data")["Valor Total"].sum())
 
-# ---------------- MÓDULO 11: TELA DE BACKUP UNIFICADO ----------------
+# ---------------- MÓDULO 11: EMISSÃO DE RELATÓRIOS OFICIAIS EM PDF (NOVO) ----------------
+elif menu == "📄 Emitir Relatórios":
+    st.header("📄 Emissão de Relatórios Oficiais (PDF)")
+    st.write("Filtre o período comercial desejado para gerar e exportar o documento consolidado do caixa.")
+    
+    with st.container(border=True):
+        tipo_filtro = st.radio("Selecione o Intervalo de Tempo:", ["Por Dia Específico", "Por Mês Inteiro", "Período Customizado (Trimestral/Semestral)"])
+        
+        # Lógica de definição de datas com base no seletor
+        if tipo_filtro == "Por Dia Específico":
+            dia_sel = st.date_input("Escolha o Dia:", datetime.now())
+            data_inicio = dia_sel.strftime("%Y-%m-%d")
+            data_fim = dia_sel.strftime("%Y-%m-%d")
+        elif tipo_filtro == "Por Mês Inteiro":
+            mes_sel = st.text_input("Digite o Ano-Mês (Formato YYYY-MM):", value=datetime.now().strftime("%Y-%m"))
+            data_inicio = f"{mes_sel}-01"
+            data_fim = f"{mes_sel}-31"
+        else:
+            col_d1, col_d2 = st.columns(2)
+            data_inicio = col_d1.date_input("Data de Início:", datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+            data_fim = col_d2.date_input("Data de Fim:", datetime.now()).strftime("%Y-%m-%d")
+            
+        st.markdown("---")
+        
+        if st.button("🧱 Processar e Compilar Relatório PDF", type="primary", use_container_width=True):
+            # Filtragem Cirúrgica dos DataFrames com tratamento rigoroso de texto/datas
+            vendas_df["Data"] = vendas_df["Data"].astype(str)
+            v_filtradas = vendas_df[(vendas_df["Data"] >= data_inicio) & (vendas_df["Data"] <= data_fim)]
+            
+            gastos_df["Data"] = gastos_df["Data"].astype(str)
+            g_filtrados = gastos_df[(gastos_df["Data"] >= data_inicio) & (gastos_df["Data"] <= data_fim)]
+            
+            fechamentos_df["Data"] = fechamentos_df["Data"].astype(str)
+            f_filtrados = fechamentos_df[(fechamentos_df["Data"] >= data_inicio) & (fechamentos_df["Data"] <= data_fim)]
+
+            # Cálculos consolidados para exibição estruturada no documento
+            faturamento_tot = pd.to_numeric(v_filtradas["Valor Total"], errors='coerce').sum()
+            gastos_tot = pd.to_numeric(g_filtrados["Valor (R$)"], errors='coerce').sum()
+            saldo_liq = faturamento_tot - gastos_tot
+            
+            # Montagem estruturada do PDF utilizando FPDF2
+            pdf = PDFRelatorio()
+            pdf.add_page()
+            pdf.set_margins(10, 10, 10)
+            
+            # Bloco 1: Informações Gerais do Período
+            pdf.set_font("Arial", "B", 12)
+            pdf.cell(0, 8, f"Periodo Auditado: {data_inicio} ate {data_fim}", ln=True)
+            pdf.set_font("Arial", "", 10)
+            pdf.cell(0, 6, f"Emitido por: {st.session_state['perfil'].upper()} em {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True)
+            pdf.ln(4)
+            
+            # Bloco 2: Resumo Financeiro
+            pdf.set_font("Arial", "B", 11)
+            pdf.set_fill_color(240, 240, 240)
+            pdf.cell(0, 7, "1. RESUMO FINANCEIRO GERAL", ln=True, fill=True)
+            pdf.set_font("Arial", "", 10)
+            pdf.cell(95, 6, f" Faturamento Bruto Balcao: R$ {faturamento_tot:.2f}", border=1)
+            pdf.cell(95, 6, f" Total de Saidas (Gastos): R$ {gastos_tot:.2f}", border=1, ln=True)
+            pdf.set_font("Arial", "B", 10)
+            pdf.cell(190, 6, f" Saldo Liquido do Periodo: R$ {saldo_liq:.2f}", border=1, ln=True)
+            pdf.ln(5)
+            
+            # Bloco 3: Movimentação de Atendimentos e Categorias
+            pdf.set_font("Arial", "B", 11)
+            pdf.cell(0, 7, "2. DETALHAMENTO POR CATEGORIA DE ATENDIMENTO", ln=True, fill=True)
+            pdf.set_font("Arial", "", 10)
+            servicos_tot = v_filtradas[v_filtradas["Tipo"] == "Serviço"]["Valor Total"].sum()
+            produtos_tot = v_filtradas[v_filtradas["Tipo"] == "Produto"]["Valor Total"].sum()
+            pdf.cell(95, 6, f" Faturamento com Servicos (Barbearia): R$ {servicos_tot:.2f}", border=1)
+            pdf.cell(95, 6, f" Faturamento com Produtos (Conveniencia): R$ {produtos_tot:.2f}", border=1, ln=True)
+            pdf.ln(5)
+            
+            # Bloco 4: Divisão por Meios de Recebimento
+            pdf.set_font("Arial", "B", 11)
+            pdf.cell(0, 7, "3. RECEBIMENTOS POR MEIO DE PAGAMENTO", ln=True, fill=True)
+            pdf.set_font("Arial", "", 10)
+            for meio in ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"]:
+                val_meio = v_filtradas[v_filtradas["Forma de Pagamento"] == meio]["Valor Total"].sum()
+                pdf.cell(47.5, 6, f" {meio}: R$ {val_meio:.2f}", border=1)
+            pdf.ln(10)
+            
+            # Bloco 5: Histórico de Quebras de Caixa
+            pdf.set_font("Arial", "B", 11)
+            pdf.cell(0, 7, "4. AUDITORIA DE FECHAMENTOS DE CAIXA DIARIOS", ln=True, fill=True)
+            pdf.set_font("Arial", "B", 9)
+            pdf.cell(40, 6, "Data", border=1, align="C")
+            pdf.cell(40, 6, "Usuario", border=1, align="C")
+            pdf.cell(50, 6, "Total Contado", border=1, align="C")
+            pdf.cell(60, 6, "Diferenca / Status", border=1, align="C", ln=True)
+            pdf.set_font("Arial", "", 9)
+            if not f_filtrados.empty:
+                for _, fech in f_filtrados.iterrows():
+                    pdf.cell(40, 6, str(fech["Data"]), border=1, align="C")
+                    pdf.cell(40, 6, str(fech["Usuario"]).upper(), border=1, align="C")
+                    pdf.cell(50, 6, f"R$ {fech['Total Real']:.2f}", border=1, align="C")
+                    pdf.cell(60, 6, str(fech["Status"]), border=1, align="C", ln=True)
+            else:
+                pdf.cell(190, 6, "Nenhum fechamento auditado gravado no intervalo selecionado.", border=1, ln=True, align="C")
+                
+            # Exportação segura do buffer binário para download imediato na tela
+            pdf_output = pdf.output(dest='S')
+            st.download_button(
+                label="📥 Baixar Relatório Gerado (PDF)",
+                data=bytes(pdf_output),
+                file_name=f"relatorio_ochefao_{data_inicio}_a_{data_fim}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+            st.success("✨ Relatório gerado! Clique no botão acima para salvar o PDF.")
+
+# ---------------- MÓDULO 12: TELA DE BACKUP UNIFICADO ----------------
 elif menu == "💾 Backup do Sistema":
     if st.session_state["perfil"] == "admin":
         st.header("💾 Sistema Unificado de Backup Completo (.ZIP)")
@@ -733,7 +854,7 @@ elif menu == "💾 Backup do Sistema":
                     except Exception as e: st.error(f"Erro: {e}")
     else: st.error("🚨 ÁREA RESTRITA AO SUPER ADMINISTRADOR.")
 
-# ---------------- MÓDULO 12: CONFIGURAÇÕES ----------------
+# ---------------- MÓDULO 13: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações":
     if st.session_state["perfil"] == "admin":
         st.header("Configurações Globais")
