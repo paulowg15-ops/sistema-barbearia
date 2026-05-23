@@ -331,15 +331,24 @@ elif menu == "📉 Lançar Gasto/Despesa":
                 time.sleep(1.2)
                 st.rerun()
 
-# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS (ATUALIZADO COM EXCLUSÃO DE GASTOS) ----------------
+# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS (MÁSCARA VISUAL APLICADA AQUI) ----------------
 elif menu == "✏️ Corrigir Lançamentos":
     st.header("✏️ Central de Correções e Estornos")
     tab_corr_vendas, tab_corr_fechamentos, tab_corr_gastos = st.tabs(["🛒 Corrigir Comandas", "🔒 Auditar Fechamentos", "📉 Auditar e Deletar Gastos"])
     
     with tab_corr_vendas:
         if not vendas_df.empty:
+            # CORREÇÃO DA VISUALIZAÇÃO SOLICITADA POR G.:
             vendas_visivel_df = vendas_df.copy()
             vendas_visivel_df.insert(0, "ID_Lancamento", vendas_visivel_df.index)
+            
+            # Se for do tipo Serviço ou Produto e estiver salvo como Consumo, mascara visualmente para 'Venda Balcão'
+            vendas_visivel_df.loc[
+                (vendas_visivel_df["Forma de Pagamento"] == "Consumo") & 
+                (vendas_visivel_df["Tipo"].isin(["Serviço", "Produto"])), 
+                "Forma de Pagamento"
+            ] = "Venda Balcão"
+            
             st.dataframe(vendas_visivel_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
             col_ed1, col_ed2 = st.columns(2, gap="large")
             with col_ed1:
@@ -348,7 +357,14 @@ elif menu == "✏️ Corrigir Lançamentos":
                     linha_original = vendas_df.iloc[id_selecionado]
                     lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
                     novo_b = st.selectbox("Mudar Barbeiro:", lista_barbeiros_sistema, index=lista_barbeiros_sistema.index(linha_original['Barbeiro']) if linha_original['Barbeiro'] in lista_barbeiros_sistema else 0)
-                    nova_f_pagto = st.selectbox("Mudar Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"], index=["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"].index(linha_original['Forma de Pagamento']))
+                    
+                    # Se o item for um registro financeiro de verdade (Pix, Dinheiro, etc.), permite alterar. Se for 'Consumo', deixa travado para não corromper o split
+                    if linha_original['Forma de Pagamento'] == "Consumo":
+                        st.info("Forma de Pagamento associada a itens de consumo do Balcão (Dividida no Caixa).")
+                        nova_f_pagto = "Consumo"
+                    else:
+                        nova_f_pagto = st.selectbox("Mudar Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"], index=["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"].index(linha_original['Forma de Pagamento']))
+                        
                     novo_cliente_nome = st.text_input("Nome do Cliente:", value=linha_original['Cliente'])
                     if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
                         vendas_df.at[id_selecionado, 'Barbeiro'] = novo_b
@@ -390,7 +406,6 @@ elif menu == "✏️ Corrigir Lançamentos":
 
     with tab_corr_gastos:
         st.subheader("🗑️ Cancelar Saída de Caixa / Despesa")
-        # EXCLUSÃO DE GASTOS ADICIONADA: Mostra a tabela de gastos e permite o estorno com rastro logado
         if not gastos_df.empty:
             gastos_visivel_df = gastos_df.copy()
             gastos_visivel_df.insert(0, "ID_Gasto", gastos_visivel_df.index)
@@ -399,14 +414,12 @@ elif menu == "✏️ Corrigir Lançamentos":
             id_gasto_remover = st.selectbox("Selecione o ID do Gasto para remover do sistema:", gastos_visivel_df["ID_Gasto"].tolist(), key="sb_del_gasto_sel")
             if st.button("❌ Excluir Despesa Selecionada", use_container_width=True, key="btn_confirm_del_gasto"):
                 gasto_deletado_info = gastos_df.iloc[id_gasto_remover]
-                
-                # Deixa o rastro secreto na auditoria antes de anular a linha
-                texto_rastro = f"Data lancada: {gasto_deletado_info['Data']} | Descricao: {gasto_deletado_info['Descrição']} | Categoria: {gasto_deletado_info['Categoria']} | Valor Estornado: R$ {gasto_deletado_info['Valor (R$)']}"
+                texto_rastro = f"Data lancada: {gasto_deletado_info['Data']} | Descricao: {gasto_deletado_info['Descrição']} | Valor Estornado: R$ {gasto_deletado_info['Valor (R$)']}"
                 registrar_rastro_auditoria("EXCLUSÃO DE GASTO / DESPESA", texto_rastro)
                 
                 gastos_df = gastos_df.drop(id_gasto_remover).reset_index(drop=True)
                 gastos_df.to_csv(ARQUIVO_GASTOS, index=False, encoding='utf-8')
-                st.success(f"🗑️ O gasto '{gasto_deletado_info['Descrição']}' foi removido do fluxo financeiro com sucesso!")
+                st.success(f"🗑️ O gasto '{gasto_deletado_info['Descrição']}' foi removido!")
                 time.sleep(1.2)
                 st.rerun()
         else: st.info("Nenhum registro de gastos encontrado para remoção.")
