@@ -68,8 +68,9 @@ inicializar_banco_de_dados()
 
 usuarios_df = pd.read_csv(ARQUIVO_USUARIOS, encoding='utf-8')
 
-PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "🔒 Fechamento de Dia", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "📄 Emitir Relatórios", "🕵️ Trilha de Auditoria", "💾 Backup do Sistema", "⚙️ Configurações"]
-PERMISSOES_PADRAO = ["💸 Abrir Comanda (Vendas)", "📦 Estoque & Serviços"]
+# PERMISSOES MASTER ATUALIZADAS (Inclusão da nova tela de Auditoria Visual Limpa)
+PERMISSOES_MASTER = ["💸 Abrir Comanda (Vendas)", "🔍 Extrato de Fluxo", "💳 Clube de Assinaturas", "📉 Lançar Gasto/Despesa", "✏️ Corrigir Lançamentos", "🔒 Fechamento de Dia", "👥 Cadastrar Barbeiro", "📦 Estoque & Serviços", "⚙️ Gerenciar Catálogo", "👤 Gerenciar Usuários", "📊 Painel de Relatórios", "📄 Emitir Relatórios", "🕵️ Trilha de Auditoria", "💾 Backup do Sistema", "⚙️ Configurações"]
+PERMISSOES_PADRAO = ["💸 Abrir Comanda (Vendas)", "🔍 Extrato de Fluxo", "📦 Estoque & Serviços"]
 
 def registrar_rastro_auditoria(acao, detalhes):
     df_auditoria_atual = pd.read_csv(ARQUIVO_AUDITORIA, encoding='utf-8')
@@ -251,6 +252,53 @@ if menu == "💸 Abrir Comanda (Vendas)":
                     st.rerun()
             else: st.info("A comanda eletrônica está limpa.")
 
+# ---------------- MÓDULO NEW: EXTRATO DE FLUXO TOTALMENTE SEPARADO (SOLICITADO AGORA!) ----------------
+elif menu == "🔍 Extrato de Fluxo":
+    st.header("🔍 Extrato de Fluxo Desmembrado e Separado")
+    st.write("Visualize separadamente os serviços prestados, as formas como o dinheiro entrou e as conferências de caixa.")
+    
+    # Seletor de período comercial para filtrar de uma vez todas as tabelas abaixo
+    col_f1, col_f2 = st.columns(2)
+    data_inicio_f = col_f1.date_input("Filtrar a partir do dia:", datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    data_fim_f = col_f2.date_input("Até o dia:", datetime.now()).strftime("%Y-%m-%d")
+    
+    # Filtragem cirúrgica em tempo de execução
+    vendas_df["Data"] = vendas_df["Data"].astype(str)
+    vendas_periodo = vendas_df[(vendas_df["Data"] >= data_inicio_f) & (vendas_df["Data"] <= data_fim_f)]
+    
+    fechamentos_df["Data"] = fechamentos_df["Data"].astype(str)
+    fechamentos_periodo = fechamentos_df[(fechamentos_df["Data"] >= data_inicio_f) & (fechamentos_df["Data"] <= data_fim_f)]
+    
+    # ---------------- TABELA 1: SÓ CONSUMO DE BALCÃO (CORTES/BEBIDAS) ----------------
+    st.markdown("---")
+    st.subheader("💈 1. Registro de Atendimentos e Consumos do Balcão")
+    st.write("Esta tabela exibe estritamente o que foi consumido pelos clientes (serviços executados e produtos retirados).")
+    df_consumo_balcao = vendas_periodo[vendas_periodo["Tipo"].isin(["Serviço", "Produto"])].copy()
+    if not df_consumo_balcao.empty:
+        df_consumo_balcao["Forma de Pagamento"] = "Venda Balcão" # Força a máscara visual limpa solicitada
+        st.dataframe(df_consumo_balcao[["Data", "Cliente", "Item", "Tipo", "Quantidade", "Valor Total", "Barbeiro", "Forma de Pagamento"]].sort_index(ascending=False), use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhum serviço ou produto foi registrado nesse intervalo de datas.")
+        
+    # ---------------- TABELA 2: SÓ RECEBIMENTOS FINANCEIROS (PIX/DINHEIRO/CARTÕES) ----------------
+    st.markdown("---")
+    st.subheader("💰 2. Entradas Financeiras e Formas de Pagamento Reais")
+    st.write("Esta tabela exibe exclusivamente os valores financeiros arrecadados no caixa desmembrados por Pix, Dinheiro e Cartões.")
+    df_financeiro_real = vendas_periodo[vendas_periodo["Tipo"] == "Financeiro"].copy()
+    if not df_financeiro_real.empty:
+        st.dataframe(df_financeiro_real[["Data", "Cliente", "Item", "Valor Total", "Forma de Pagamento", "Barbeiro"]].sort_index(ascending=False), use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhuma transação de pagamento deu entrada no caixa nesse intervalo.")
+
+    # ---------------- TABELA 3: SÓ FECHAMENTOS DE CAIXA AUDITADOS (GAVETA REAL) ----------------
+    st.markdown("---")
+    st.subheader("🔒 3. Histórico de Fechamentos de Caixa Diários")
+    st.write("Esta tabela exibe as auditorias diárias preenchidas pelo gerente no final do expediente comparando a gaveta com o sistema.")
+    if not fechamentos_periodo.empty:
+        st.dataframe(fechamentos_periodo.sort_index(ascending=False), use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhum fechamento diário foi realizado no período selecionado.")
+
 # ---------------- MÓDULO 2: CLUBE DE ASSINATURAS ----------------
 elif menu == "💳 Clube de Assinaturas":
     st.header("💳 Clube de Assinaturas")
@@ -331,24 +379,16 @@ elif menu == "📉 Lançar Gasto/Despesa":
                 time.sleep(1.2)
                 st.rerun()
 
-# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS (MÁSCARA VISUAL APLICADA AQUI) ----------------
+# ---------------- MÓDULO 4: CORRIGIR LANÇAMENTOS ----------------
 elif menu == "✏️ Corrigir Lançamentos":
     st.header("✏️ Central de Correções e Estornos")
     tab_corr_vendas, tab_corr_fechamentos, tab_corr_gastos = st.tabs(["🛒 Corrigir Comandas", "🔒 Auditar Fechamentos", "📉 Auditar e Deletar Gastos"])
     
     with tab_corr_vendas:
         if not vendas_df.empty:
-            # CORREÇÃO DA VISUALIZAÇÃO SOLICITADA POR G.:
             vendas_visivel_df = vendas_df.copy()
             vendas_visivel_df.insert(0, "ID_Lancamento", vendas_visivel_df.index)
-            
-            # Se for do tipo Serviço ou Produto e estiver salvo como Consumo, mascara visualmente para 'Venda Balcão'
-            vendas_visivel_df.loc[
-                (vendas_visivel_df["Forma de Pagamento"] == "Consumo") & 
-                (vendas_visivel_df["Tipo"].isin(["Serviço", "Produto"])), 
-                "Forma de Pagamento"
-            ] = "Venda Balcão"
-            
+            vendas_visivel_df.loc[(vendas_visivel_df["Forma de Pagamento"] == "Consumo") & (vendas_visivel_df["Tipo"].isin(["Serviço", "Produto"])), "Forma de Pagamento"] = "Venda Balcão"
             st.dataframe(vendas_visivel_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
             col_ed1, col_ed2 = st.columns(2, gap="large")
             with col_ed1:
@@ -357,14 +397,11 @@ elif menu == "✏️ Corrigir Lançamentos":
                     linha_original = vendas_df.iloc[id_selecionado]
                     lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
                     novo_b = st.selectbox("Mudar Barbeiro:", lista_barbeiros_sistema, index=lista_barbeiros_sistema.index(linha_original['Barbeiro']) if linha_original['Barbeiro'] in lista_barbeiros_sistema else 0)
-                    
-                    # Se o item for um registro financeiro de verdade (Pix, Dinheiro, etc.), permite alterar. Se for 'Consumo', deixa travado para não corromper o split
                     if linha_original['Forma de Pagamento'] == "Consumo":
-                        st.info("Forma de Pagamento associada a itens de consumo do Balcão (Dividida no Caixa).")
+                        st.info("Forma de Pagamento associada a itens de consumo do Balcão.")
                         nova_f_pagto = "Consumo"
                     else:
                         nova_f_pagto = st.selectbox("Mudar Pagamento:", ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"], index=["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"].index(linha_original['Forma de Pagamento']))
-                        
                     novo_cliente_nome = st.text_input("Nome do Cliente:", value=linha_original['Cliente'])
                     if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
                         vendas_df.at[id_selecionado, 'Barbeiro'] = novo_b
@@ -410,13 +447,11 @@ elif menu == "✏️ Corrigir Lançamentos":
             gastos_visivel_df = gastos_df.copy()
             gastos_visivel_df.insert(0, "ID_Gasto", gastos_visivel_df.index)
             st.dataframe(gastos_visivel_df.sort_index(ascending=False), use_container_width=True, hide_index=True)
-            
             id_gasto_remover = st.selectbox("Selecione o ID do Gasto para remover do sistema:", gastos_visivel_df["ID_Gasto"].tolist(), key="sb_del_gasto_sel")
             if st.button("❌ Excluir Despesa Selecionada", use_container_width=True, key="btn_confirm_del_gasto"):
                 gasto_deletado_info = gastos_df.iloc[id_gasto_remover]
                 texto_rastro = f"Data lancada: {gasto_deletado_info['Data']} | Descricao: {gasto_deletado_info['Descrição']} | Valor Estornado: R$ {gasto_deletado_info['Valor (R$)']}"
                 registrar_rastro_auditoria("EXCLUSÃO DE GASTO / DESPESA", texto_rastro)
-                
                 gastos_df = gastos_df.drop(id_gasto_remover).reset_index(drop=True)
                 gastos_df.to_csv(ARQUIVO_GASTOS, index=False, encoding='utf-8')
                 st.success(f"🗑️ O gasto '{gasto_deletado_info['Descrição']}' foi removido!")
@@ -937,7 +972,7 @@ elif menu == "📄 Emitir Relatórios":
             pdf.cell(95, 6, f" Faturamento Bruto Balcao: R$ {faturamento_tot:.2f}", border=1)
             pdf.cell(95, 6, f" Total de Saidas (Gastos): R$ {gastos_tot:.2f}", border=1, ln=1)
             pdf.set_font("Arial", "B", 10)
-            pdf.cell(190, 6, f" Saldo Liquido do Periodo: R$ {saldo_liq:.2f}", border=1, ln=1)
+            pdf.cell(190, 6, f" Saldo Liquidodo Periodo: R$ {saldo_liq:.2f}", border=1, ln=1)
             pdf.ln()
             
             pdf.set_font("Arial", "B", 11)
