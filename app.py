@@ -150,6 +150,14 @@ consumo_interno_df = pd.read_csv(ARQUIVO_CONSUMO_INTERNO, encoding='utf-8').drop
 fechamentos_df = pd.read_csv(ARQUIVO_FECHAMENTOS, encoding='utf-8').dropna(how='all')
 auditoria_df = pd.read_csv(ARQUIVO_AUDITORIA, encoding='utf-8').dropna(how='all')
 
+# Garante estrutura mínima caso os arquivos CSV estejam corrompidos ou em branco após o reboot do server
+if vendas_df.empty or "Data" not in vendas_df.columns:
+    vendas_df = pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"])
+if gastos_df.empty or "Data" not in gastos_df.columns:
+    gastos_df = pd.DataFrame(columns=["Data", "Descrição", "Valor (R$)", "Categoria"])
+if fechamentos_df.empty or "Data" not in fechamentos_df.columns:
+    fechamentos_df = pd.DataFrame(columns=["Data", "Usuario", "Dinheiro Real", "Pix Real", "Cartao Real", "Total Real", "Total Sistema", "Diferenca", "Status", "Observacoes"])
+
 st.sidebar.title("✂️ O Chefão")
 st.sidebar.write(f"Conectado como: **{st.session_state['perfil'].upper()}**")
 st.sidebar.markdown("---")
@@ -272,34 +280,22 @@ if menu == "💸 Abrir Comanda (Vendas)":
                     st.rerun()
             else: st.info("A comanda eletrônica está limpa.")
 
-# ---------------- MÓDULO NEW: EXTRATO DE FLUXO SEPARADO (BLINDADO) ----------------
+# ---------------- MÓDULO NEW: EXTRATO DE FLUXO SEPARADO ----------------
 elif menu == "🔍 Extrato de Fluxo":
     st.header("🔍 Extrato de Fluxo Desmembrado e Separado")
     col_f1, col_f2 = st.columns(2)
     data_inicio_f = col_f1.date_input("Filtrar a partir do dia:", datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
     data_fim_f = col_f2.date_input("Até o dia:", datetime.now()).strftime("%Y-%m-%d")
     
-    # Tratamento de erro cirúrgico contra arquivos vazios para matar a tela vermelha
-    if not vendas_df.empty and "Data" in vendas_df.columns:
-        vendas_df["Data"] = vendas_df["Data"].astype(str)
-        vendas_periodo = vendas_df[(vendas_df["Data"] >= data_inicio_f) & (vendas_df["Data"] <= data_fim_f)]
-    else:
-        vendas_periodo = pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"])
-        
-    if not fechamentos_df.empty and "Data" in fechamentos_df.columns:
-        fechamentos_df["Data"] = fechamentos_df["Data"].astype(str)
-        fechamentos_periodo = fechamentos_df[(fechamentos_df["Data"] >= data_inicio_f) & (fechamentos_df["Data"] <= data_fim_f)]
-    else:
-        fechamentos_periodo = pd.DataFrame()
+    vendas_df["Data"] = vendas_df["Data"].astype(str)
+    vendas_periodo = vendas_df[(vendas_df["Data"] >= data_inicio_f) & (vendas_df["Data"] <= data_fim_f)] if not vendas_df.empty else pd.DataFrame()
+    fechamentos_periodo = fechamentos_df[(fechamentos_df["Data"] >= data_inicio_f) & (fechamentos_df["Data"] <= data_fim_f)] if not fechamentos_df.empty else pd.DataFrame()
     
     st.markdown("---")
     st.subheader("💈 1. Registro de Atendimentos e Consumos do Balcão")
-    
-    # Proteção de verificação estrutural de colunas
     if not vendas_periodo.empty and "Tipo" in vendas_periodo.columns:
         df_consumo_balcao = vendas_periodo[vendas_periodo["Tipo"].isin(["Serviço", "Produto"])].copy()
-    else:
-        df_consumo_balcao = pd.DataFrame()
+    else: df_consumo_balcao = pd.DataFrame()
         
     if not df_consumo_balcao.empty:
         df_consumo_balcao["Forma de Pagamento"] = "Venda Balcão"
@@ -308,11 +304,9 @@ elif menu == "🔍 Extrato de Fluxo":
         
     st.markdown("---")
     st.subheader("💰 2. Entradas Financeiras e Formas de Pagamento Reais")
-    
     if not vendas_periodo.empty and "Tipo" in vendas_periodo.columns:
         df_financeiro_real = vendas_periodo[vendas_periodo["Tipo"] == "Financeiro"].copy()
-    else:
-        df_financeiro_real = pd.DataFrame()
+    else: df_financeiro_real = pd.DataFrame()
         
     if not df_financeiro_real.empty:
         st.dataframe(df_financeiro_real[["Data", "Cliente", "Item", "Valor Total", "Forma de Pagamento", "Barbeiro"]].sort_index(ascending=False), use_container_width=True, hide_index=True)
@@ -377,7 +371,7 @@ elif menu == "💳 Clube de Assinaturas":
                 lista_barbeiros_sistema = barbeiros_df["Nome"].tolist() if not barbeiros_df.empty else ["G."]
                 barbeiro_atendeu = st.selectbox("Barbeiro Atendente:", lista_barbeiros_sistema)
                 if st.button("💾 Validar Entrada", type="primary", use_container_width=True):
-                    nova_presenca = pd.DataFrame([{"Data": datetime.now().strftime("%Y-%m-%d"), "Cliente": cliente_uso, "Serviço Usado": servico_uso, "Barbeiro Atendeu": barbeiro_atendeu}])
+                    nova_presenca = pd.DataFrame([{"Data": datetime.now().strftime("%Y-%m-%d"), "Cliente": cliente_uso, "Serviço Usado": servico_Social, "Barbeiro Atendeu": barbeiro_atendeu}])
                     presencas_df = pd.concat([presencas_df, nova_presenca], ignore_index=True)
                     presencas_df.to_csv(ARQUIVO_PRESENCAS, index=False, encoding='utf-8')
                     st.success("✅ Presença registrada!")
@@ -560,17 +554,17 @@ elif menu == "👥 Cadastrar Barbeiro":
 # ---------------- MÓDULO 7: ESTOQUE & SERVIÇOS ----------------
 elif menu == "📦 Estoque & Serviços":
     st.header("📦 Monitor do Estoque e Serviços")
-    vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
-    produtos_calculados = produtos_df.copy()
-    
-    if not vendas_df.empty and "Item" in vendas_df.columns and "Quantidade" in vendas_df.columns:
-        qtd_vendida_map = vendas_df[vendas_df["Tipo"] == "Produto"].groupby("Item")["Quantidade"].sum().to_dict()
+    # Proteções contra colunas inexistentes na tabela vazia
+    if not vendas_df.empty and "Quantidade" in vendas_df.columns:
+        vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
+        qtd_vendida_map = vendas_df[vendas_df["Tipo"] == "Produto"].groupby("Item")["Quantidade"].sum().to_dict() if "Tipo" in vendas_df.columns else {}
     else: qtd_vendida_map = {}
         
     if not consumo_interno_df.empty and "Item" in consumo_interno_df.columns and "Quantidade" in consumo_interno_df.columns:
         qtd_consumo_map = consumo_interno_df.groupby("Item")["Quantidade"].sum().to_dict()
     else: qtd_consumo_map = {}
         
+    produtos_calculados = produtos_df.copy()
     produtos_calculados["Quantidade Vendida"] = produtos_calculados["Nome do Produto"].map(qtd_vendida_map).fillna(0).astype(int)
     produtos_calculados["Consumo Staff"] = produtos_calculados["Nome do Produto"].map(qtd_consumo_map).fillna(0).astype(int)
     produtos_calculados["Estoque Atual"] = produtos_calculados["Estoque Inicial"] - produtos_calculados["Quantidade Vendida"] - produtos_calculados["Consumo Staff"]
@@ -665,7 +659,7 @@ elif menu == "⚙️ Gerenciar Catálogo":
                                 produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
                                 st.success("🗑️ Produto excluído!")
                                 time.sleep(1.2)
-                                rst.rerun()
+                                st.rerun()
                         else: st.error("🚫 Bloqueado")
         with col_p_2: st.dataframe(produtos_df, use_container_width=True, hide_index=True)
 
@@ -785,37 +779,42 @@ elif menu == "👤 Gerenciar Usuários":
 elif menu == "📊 Painel de Relatórios":
     st.header("📊 Dashboard Financeiro Estruturado - O Chefão")
     
-    vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
-    vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
-    gastos_df["Valor (R$)"] = pd.to_numeric(gastos_df["Valor (R$)"], errors='coerce').fillna(0)
+    # Proteções estruturais adicionais nas funções de conversão numérica
+    if not vendas_df.empty and "Valor Total" in vendas_df.columns:
+        vendas_df["Valor Total"] = pd.to_numeric(vendas_df["Valor Total"], errors='coerce').fillna(0)
+        vendas_df["Quantidade"] = pd.to_numeric(vendas_df["Quantidade"], errors='coerce').fillna(0)
+    else:
+        vendas_df = pd.DataFrame(columns=["Valor Total", "Quantidade", "Data", "Ano_Mes", "Tipo", "Item", "Barbeiro", "Cliente"])
+        
+    if not gastos_df.empty and "Valor (R$)" in gastos_df.columns:
+        gastos_df["Valor (R$)"] = pd.to_numeric(gastos_df["Valor (R$)"], errors='coerce').fillna(0)
+    else:
+        gastos_df = pd.DataFrame(columns=["Valor (R$)", "Data", "Ano_Mes", "Descrição", "Categoria"])
+        
     consumo_interno_df["Valor Total"] = pd.to_numeric(consumo_interno_df["Valor Total"], errors='coerce').fillna(0)
     consumo_interno_df["Quantidade"] = pd.to_numeric(consumo_interno_df["Quantidade"], errors='coerce').fillna(0)
     
-    if not vendas_df.empty and "Data" in vendas_df.columns:
-        vendas_df["Ano_Mes"] = vendas_df["Data"].str[:7]
-        meses_vendas = vendas_df["Ano_Mes"].dropna().tolist()
-    else: meses_vendas = []
-        
-    if not gastos_df.empty and "Data" in gastos_df.columns:
-        gastos_df["Ano_Mes"] = gastos_df["Data"].str[:7]
-        meses_gastos = gastos_df["Ano_Mes"].dropna().tolist()
-    else: meses_gastos = []
+    vendas_df["Ano_Mes"] = vendas_df["Data"].astype(str).str[:7]
+    gastos_df["Ano_Mes"] = gastos_df["Data"].astype(str).str[:7]
     
+    meses_vendas = vendas_df["Ano_Mes"].dropna().tolist() if not vendas_df.empty else []
+    meses_gastos = gastos_df["Ano_Mes"].dropna().tolist() if not gastos_df.empty else []
     meses_disponiveis = sorted(list(set(meses_vendas + meses_gastos)), reverse=True)
+    
     mes_atual_string = datetime.now().strftime("%Y-%m")
     if mes_atual_string not in meses_disponiveis: meses_disponiveis.insert(0, mes_atual_string)
         
     mes_selecionado = st.selectbox("📅 Selecione o Mês de Análise:", meses_disponiveis, index=0)
     
-    v_filtradas = vendas_df[vendas_df["Ano_Mes"] == mes_selecionado] if not vendas_df.empty and "Ano_Mes" in vendas_df.columns else pd.DataFrame()
-    g_filtrados = gastos_df[gastos_df["Ano_Mes"] == mes_selecionado] if not gastos_df.empty and "Ano_Mes" in gastos_df.columns else pd.DataFrame()
+    v_filtradas = vendas_df[vendas_df["Ano_Mes"] == mes_selecionado] if not vendas_df.empty else pd.DataFrame()
+    g_filtrados = gastos_df[gastos_df["Ano_Mes"] == mes_selecionado] if not gastos_df.empty else pd.DataFrame()
     
-    mapa_custo_produto = produtos_df.set_index("Nome do Produto")["Preço de Custo"].to_dict()
-    mapa_comissao_produto = produtos_df.set_index("Nome do Produto")["Comissão Barbeiro (R$)"].to_dict()
-    mapa_comissao_barbeiros = barbeiros_df.set_index("Nome")["Comissão (%)"].to_dict()
+    mapa_custo_produto = produtos_df.set_index("Nome do Produto")["Preço de Custo"].to_dict() if not produtos_df.empty else {}
+    mapa_comissao_produto = produtos_df.set_index("Nome do Produto")["Comissão Barbeiro (R$)"].to_dict() if not produtos_df.empty else {}
+    mapa_comissao_barbeiros = barbeiros_df.set_index("Nome")["Comissão (%)"].to_dict() if not barbeiros_df.empty else {}
 
-    v_servicos = v_filtradas[v_filtradas["Tipo"] == "Serviço"] if not v_filtradas.empty else pd.DataFrame()
-    faturamento_barbearia = v_servicos["Valor Total"].sum() if not v_servicos.empty else 0.0
+    v_servicos = v_filtradas[v_filtradas["Tipo"] == "Serviço"] if not v_filtradas.empty and "Tipo" in v_filtradas.columns else pd.DataFrame()
+    faturamento_barbearia = v_servicos["Valor Total"].sum()
     
     comissao_servicos_paga = 0.0
     if not v_servicos.empty:
@@ -824,8 +823,8 @@ elif menu == "📊 Painel de Relatórios":
             comissao_servicos_paga += float(venda_s["Valor Total"]) * pct_b
     lucro_barbearia_mes = faturamento_barbearia - comissao_servicos_paga
 
-    v_produtos = v_filtradas[v_filtradas["Tipo"] == "Produto"] if not v_filtradas.empty else pd.DataFrame()
-    faturamento_conveniencia = v_produtos["Valor Total"].sum() if not v_produtos.empty else 0.0
+    v_produtos = v_filtradas[v_filtradas["Tipo"] == "Produto"] if not v_filtradas.empty and "Tipo" in v_filtradas.columns else pd.DataFrame()
+    faturamento_conveniencia = v_produtos["Valor Total"].sum()
     
     custo_mercadoria_vendida = 0.0
     comissao_produtos_paga = 0.0
@@ -865,16 +864,16 @@ elif menu == "📊 Painel de Relatórios":
     with tab_rel1:
         if not barbeiros_df.empty:
             relatorio_comissao = []
-            mapa_desconto_consumo = consumo_interno_df.groupby("Responsavel")["Valor Total"].sum().to_dict() if not consumo_interno_df.empty and "Responsavel" in consumo_interno_df.columns else {}
+            mapa_desconto_consumo = consumo_interno_df.groupby("Responsavel")["Valor Total"].sum().to_dict() if not consumo_interno_df.empty else {}
             for _, b in barbeiros_df.iterrows():
                 nome_b = b["Nome"]
                 porcentagem_servico = b["Comissão (%)"]
                 vendas_do_barbeiro = vendas_df[vendas_df["Barbeiro"] == nome_b] if not vendas_df.empty else pd.DataFrame()
                 
-                servicos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Serviço"] if not vendas_do_barbeiro.empty else pd.DataFrame()
+                servicos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Serviço"] if not vendas_do_barbeiro.empty and "Tipo" in vendas_do_barbeiro.columns else pd.DataFrame()
                 valor_comissao_servico = servicos_b["Valor Total"].sum() * (porcentagem_servico / 100.0) if not servicos_b.empty else 0.0
                 
-                produtos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Produto"] if not vendas_do_barbeiro.empty else pd.DataFrame()
+                produtos_b = vendas_do_barbeiro[vendas_do_barbeiro["Tipo"] == "Produto"] if not vendas_do_barbeiro.empty and "Tipo" in vendas_do_barbeiro.columns else pd.DataFrame()
                 valor_comissao_produto = sum([float(mapa_comissao_produto.get(v["Item"], 0.0)) * float(v["Quantidade"]) for _, v in produtos_b.iterrows()]) if not produtos_b.empty else 0.0
                 
                 total_ganho_bruto = valor_comissao_servico + valor_comissao_produto
@@ -1114,21 +1113,20 @@ elif menu == "💾 Backup do Sistema":
                     except Exception as e: st.error(f"Erro: {e}")
     else: st.error("🚨 ÁREA RESTRITA AO SUPER ADMINISTRADOR.")
 
-# ---------------- MÓDULO 14: CONFIGURAÇÕES (ESTOQUE ISOLADO AQUI) ----------------
+# ---------------- MÓDULO 14: CONFIGURAÇÕES ----------------
 elif menu == "⚙️ Configurações":
     if st.session_state["perfil"] == "admin":
         st.header("Configurações Globais de Redefinição")
         
         with st.container(border=True):
             st.subheader("📦 Inventário e Reposição")
-            # MELHORIA E TRAVA SOLICITADA POR G.: Botão exclusivo para zerar apenas a quantidade física do estoque, mantendo o catálogo intacto.
             if st.button("🚨 Zerar Apenas Quantidades Físicas do Estoque", type="primary", use_container_width=True):
                 if not produtos_df.empty:
                     produtos_df["Estoque Inicial"] = 0
                     produtos_df["Estoque Atual"] = 0
                     produtos_df.to_csv(ARQUIVO_PRODUTOS, index=False, encoding='utf-8')
-                    registrar_rastro_auditoria("RESET DE INVENTÁRIO", "As quantidades físicas de todos os produtos foram redefinidas para zero pelo Admin.")
-                    st.success("Estoque físico redefinido para zero! Os nomes e preços dos produtos continuam salvos.")
+                    registrar_rastro_auditoria("RESET DE INVENTÁRIO", "As quantidades físicas foram redefinidas para zero pelo Admin.")
+                    st.success("Estoque físico redefinido para zero!")
                     time.sleep(1.2)
                     st.rerun()
                     
@@ -1137,7 +1135,7 @@ elif menu == "⚙️ Configurações":
             if st.button("🚨 Zerar Clientes de Assinatura", use_container_width=True):
                 pd.DataFrame(columns=["Cliente", "Plano", "Data Inicio", "Data Vencimento", "Valor Mensal"]).to_csv(ARQUIVO_ASSINATURAS, index=False, encoding='utf-8')
                 pd.DataFrame(columns=["Data", "Cliente", "Serviço Usado", "Barbeiro Atendeu"]).to_csv(ARQUIVO_PRESENCAS, index=False, encoding='utf-8')
-                registrar_rastro_auditoria("RESET DE CLUBE DE ASSINATURAS", "Todos os assinantes e históricos de check-in foram apagados.")
+                registrar_rastro_auditoria("RESET DE CLUBE DE ASSINATURAS", "Todos os assinantes foram apagados.")
                 st.success("Clube resetado!")
                 time.sleep(1.2)
                 st.rerun()
@@ -1146,7 +1144,7 @@ elif menu == "⚙️ Configurações":
             st.subheader("💸 Limpeza de Histórico Comercial")
             if st.button("🚨 Limpar Todas as Vendas e Zerar Caixa", use_container_width=True):
                 pd.DataFrame(columns=["Data", "Item", "Tipo", "Quantidade", "Valor Total", "Forma de Pagamento", "Barbeiro", "Cliente"]).to_csv(ARQUIVO_VENDAS, index=False, encoding='utf-8')
-                registrar_rastro_auditoria("RESET FINANCEIRO DO CAIXA", "Todo o histórico de comandas e recebimentos foi esvaziado para início de operação.")
+                registrar_rastro_auditoria("RESET FINANCEIRO DO CAIXA", "Todo o histórico de comandas foi esvaziado.")
                 st.success("Caixa redefinido!")
                 time.sleep(1.2)
                 st.rerun()
